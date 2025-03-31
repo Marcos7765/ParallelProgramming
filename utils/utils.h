@@ -13,7 +13,7 @@ namespace utils{
         return global_clock.now();
     }
 
-    double calc_time_interval(std::chrono::time_point<std::chrono::steady_clock> t_start,
+    double calc_time_interval_ms(std::chrono::time_point<std::chrono::steady_clock> t_start,
         std::chrono::time_point<std::chrono::steady_clock> t_end){
         return std::chrono::duration<double, std::chrono::milliseconds::period>(t_end - t_start).count();
     }

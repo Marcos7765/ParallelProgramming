@@ -1,0 +1,63 @@
+= Gargalo de Von Neumann e a memória cache — impactos do hardware no desempenho de implementações de algoritmos
+Marcos Irigoyen <mvbirigoyen@gmail.com>
+:toc:
+:doctype: book
+
+== Introdução
+O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
+como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
+na capacidade dos sistemas computacionais, enquanto que os sistemas computacionais atuais influenciam no uso ou
+elaboração de novos algoritmos e aumento da carga computacional de algoritmos já existentes. Com o passar do tempo,
+entretanto, os aprimoramentos de performance nos computadores se manifestam por meios menos triviais que somente o
+aumento da velocidade dos processadores, mas pela introdução de novas componentes às máquinas que, por seu natureza,
+necessitam de uma mínima consideração do desenvolvedor para que sejam aproveitadas devidamente. Neste texto, abordamos
+uma limitação nos computadores consequente de seu mais famoso modelo: o Gargalo de Von Neumann, e uma das primeiras 
+tentativas de amenizá-la, a cache; demonstrando a importância de se implementar algoritmos amigáveis a cache com
+a comparação de três soluções diferentes para a multiplicação entre matriz e vetor.
+
+=== O Gargalo de Von Neumann
+__Pesquise todo termo que te despertar interesse__  
+
+Pela primeira metade do século XX os computadores eram limitados a aplicações específicas e caminhávamos vagarosamente
+na programabilidade de máquinas computadoras, com sistemas que deviam ser rearranjados fisicamente para diferentes
+programas — como o ENIAC —, e entrada/saída de dados para meios externos — como os cartões perfurados das máquinas de
+tabulação da IBM. A máquina de Turing havia sido elaborada como modelo abstrato de um computador e então expandida no
+conceito da máquina de turing universal, capaz de armazenar na sua fita infinita tanto os dados de entrada de um
+programa como o programa em si. Trabalhando no conceito de um computador de programas armazenados para o EDVAC, John von
+Neumann descreveu no "Primeiro esboço de um relatório do EDVAC" um dos primeiros projetos de um computador desse tipo,
+com a repercussão do documento influenciando o design desde os computadores da época até os atuais com a chamada
+arquitetura de Von Neumann.
+
+Uma limitação desta arquitetura, entretanto, consiste no armazenamento, a princípio de instruções, junto à memória de
+dados, onde toda a velocidade de execução do processador estaria limitada à taxa de transferência da memória a ele para
+o processamento. Esta limitação, cunhada como "o gargalo de Von Neumann" por John Backus, enquanto que referente às
+restrições causadas pelo armazenamento e repartição da memória e seus barramentos para dados e instruções, não se
+distancia muito da noção mais genérica de algoritmos limitados pela memória (memory-bound). Para tentar amenizar este
+problema, temos, principalmente, a cache.
+
+=== Cache
+A cache é uma memória intermediária entre a memória principal (RAM) e os registradores, atuando de forma "invisível" ao
+processador, mantendo dados e/ou instruções a serem utilizadas pelo programa para diminuição dessa limitação por acesso.
+Para decidir o que manter e/ou o que adicionar de dados à cache para minimizar os acessos à memória principal, são
+seguidos os princípios de localidade espacial e temporal, referentes respectivamente à tendência que dados próximos
+entre si na memória sejam acessados próximos no tempo; e a tendência de dados serem repetidamente acessados. Decorrente
+disso, o quão mais um algoritmo (ou implementação de algoritmo) encaixe nestes princípios, mais se é aproveitado da
+cache.
+
+== Experimento — Comparação em multiplicação matriz-vetor: o efeito de diferentes ordens de acesso para matrizes serializadas em diferentes ordens
+Para se demonstrar o efeito do aproveitamento do cache no desempenho de um, elaboramos três implementações de
+multiplicação entre matriz e vetor. A depender da linguagem de programação, ferramenta de compilação, biblioteca e/ou
+solução própria, matrizes são comumente armazenadas na memória de duas formas: alinhadas por linha, ou alinhadas por
+coluna. Este alinhamento se refere a ordem de sucessão dos elementos da matriz na memória, onde cada M ou N
+elementos da linha ou coluna são armazenados em série, favorecendo acessos na mesma ordem de alinhamento.
+
+== Resultados
+
+== Bônus
+
+== Relacionados
+
+- Computer Architecture: A Quantitative Approach (é um livro do patterson, não O livro do patterson, 
+o Computer Organization and Design é o que se veria em Arquitetura de Computadores);
+
+
