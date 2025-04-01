@@ -1,5 +1,4 @@
-== Gargalo de Von Neumann e a cache
-
+== Gargalo de Von Neumann e a Cache
 === Introdução
 O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
 como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços

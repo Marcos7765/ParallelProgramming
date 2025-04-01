@@ -9,9 +9,12 @@ Marcos Irigoyen <mvbirigoyen@gmail.com>
 :toc-title: Sumário
 :toclevels: 2
 :source-highlighter: highlight.js
+:multipage-level: 1
 
 Olá, esta é a página index provisória para os relatórios da matéria Programação Paralela, possivelmente também da
 matéria de sistemas distribuídos.
 
 :imagesdir: relatorio_1
+[[gargalo-de-von-neumann]]
+[desc="Sobre o impacto da eficiência de cache em algoritmos"]
 include::relatorio_1/Relatorio.adoc[]
