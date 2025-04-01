@@ -100,7 +100,7 @@ double alternative_mat_x_vec(float* mat_in, float* vec_in, size_t mat_ln, size_t
     auto start = utils::mark_time();
     for (size_t j = 0; j < mat_col; j++){
         for (size_t i = 0; i < mat_ln; i++){
-            vec_out[i] += mat_in[i + j*mat_ln]*vec_in[j], vec_out[i];
+            vec_out[i] += mat_in[i + j*mat_ln]*vec_in[j];
         }
     }
     auto end = utils::mark_time();

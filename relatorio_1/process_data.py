@@ -25,7 +25,7 @@ for label in pd.unique(data['MODE']):
 
 ax.set_xlabel('MAT_SIDE')
 ax.set_ylabel('mean time (ms)')
-ax.set_title("10 samples per MAT_SIDE, ran on a AMD Ryzen 5 7600, compiled with -O3")
+ax.set_title("10 samples per MAT_SIDE, ran on a AMD Ryzen 5 7600, compiled with -O2")
 fig.suptitle("Time comparison between algorithms")
 
 linear = True
