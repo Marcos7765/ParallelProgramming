@@ -1,0 +1,17 @@
+= Programação Paralela
+Marcos Irigoyen <mvbirigoyen@gmail.com>
+:toc: left
+:doctype: book
+:stem: latexmath
+:max-width: 70%
+:figure-caption: Figura
+:reproducible:
+:toc-title: Sumário
+:toclevels: 2
+:source-highlighter: highlight.js
+
+Olá, esta é a página index provisória para os relatórios da matéria Programação Paralela, possivelmente também da
+matéria de sistemas distribuídos.
+
+:imagesdir: relatorio_1
+include::relatorio_1/Relatorio.adoc[]

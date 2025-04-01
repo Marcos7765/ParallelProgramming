@@ -1,9 +1,6 @@
-= Gargalo de Von Neumann e a memória cache — impactos do hardware no desempenho de implementações de algoritmos
-Marcos Irigoyen <mvbirigoyen@gmail.com>
-:toc:
-:doctype: book
+== Gargalo de Von Neumann e a memória cache: demonstração do impacto da cache no produto matrix x vetor
 
-== Introdução
+=== Introdução
 O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
 como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
 na capacidade dos sistemas computacionais, enquanto que os sistemas computacionais atuais influenciam no uso ou
@@ -15,7 +12,7 @@ uma limitação nos computadores consequente de seu mais famoso modelo: o Gargal
 tentativas de amenizá-la, a cache; demonstrando a importância de se implementar algoritmos amigáveis a cache com
 a comparação de três soluções diferentes para a multiplicação entre matriz e vetor.
 
-=== O Gargalo de Von Neumann
+==== O Gargalo de Von Neumann
 __Pesquise todo termo que te despertar interesse__  
 
 Pela primeira metade do século XX os computadores eram limitados a aplicações específicas e caminhávamos vagarosamente
@@ -35,7 +32,7 @@ restrições causadas pelo armazenamento e repartição da memória e seus barra
 distancia muito da noção mais genérica de algoritmos limitados pela memória (memory-bound). Para tentar amenizar este
 problema, temos, principalmente, a cache.
 
-=== Cache
+==== Cache
 A cache é uma memória intermediária entre a memória principal (RAM) e os registradores, atuando de forma "invisível" ao
 processador, mantendo dados e/ou instruções a serem utilizadas pelo programa para diminuição dessa limitação por acesso.
 Para decidir o que manter e/ou o que adicionar de dados à cache para minimizar os acessos à memória principal, são
@@ -44,20 +41,134 @@ entre si na memória sejam acessados próximos no tempo; e a tendência de dados
 disso, o quão mais um algoritmo (ou implementação de algoritmo) encaixe nestes princípios, mais se é aproveitado da
 cache.
 
-== Experimento — Comparação em multiplicação matriz-vetor: o efeito de diferentes ordens de acesso para matrizes serializadas em diferentes ordens
+=== Experimento: Comparação do efeito de diferentes ordens de acesso na multiplicação matriz-vetor
 Para se demonstrar o efeito do aproveitamento do cache no desempenho de um, elaboramos três implementações de
 multiplicação entre matriz e vetor. A depender da linguagem de programação, ferramenta de compilação, biblioteca e/ou
 solução própria, matrizes são comumente armazenadas na memória de duas formas: alinhadas por linha, ou alinhadas por
 coluna. Este alinhamento se refere a ordem de sucessão dos elementos da matriz na memória, onde cada M ou N
-elementos da linha ou coluna são armazenados em série, favorecendo acessos na mesma ordem de alinhamento.
+elementos da linha ou coluna são armazenados em série, favorecendo acessos na mesma ordem de alinhamento. Levando em
+conta o algoritmo padrão de multiplicação de matrizes que nos é ensinado, onde cada linha do vetor de saída recebe o
+produto interno do respectivo vetor linha da matriz de entrada com o vetor de entrada, o uso de matrizes alinhadas por
+coluna iria de contramão ao princípio da localidade espacial, já que cada elemento acessado sucessivamente na matriz
+estaria espaçado por tantos elementos quanto o número de colunas da matriz. Para comparação desse efeito, duas das
+implementações são este algoritmo aplicado a diferentes alinhamentos, enquanto que a última implementa a multiplicação
+como uma soma dos vetores coluna da matriz de entrada ponderada pelos escalares das linhas do vetor de entrada.
 
-== Resultados
+.Representação matemática das implementações: "Normal" sendo melhor para alinhamento por linha, enquanto que "Alternativo" sendo melhor para alinhamento por coluna.
+image::algs.svg[width=65%, align=center, opts=inline]
 
-== Bônus
+=== Resultados
 
-== Relacionados
+ifdef::backend-html5[]
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+<script>
+    async function fetch_data (){
+        const response = await fetch("aggregated_data.csv")
+        const text = await response.text()
+        const rows = text.split("\n").map(row => row.split(','))
+        var data = []
+        var headers = rows[0]
+        const num_cols = rows[0].length
+        for (var i = 1; i < rows.length; i++){
+            if (rows[i].length != num_cols){continue}
+            var row = {}
+            for (var j = 0; j < num_cols; j++){
+                row[headers[j]] = rows[i][j]
+            }
+            data.push(row)
+        }
+        processData(data)
+    }
+
+    function processData(allRows){
+        var modes = {
+            "ROW_ORDER":{"x":[],"y":[]},
+            "COL_ORDER":{"x":[],"y":[]},
+            "COL_ORDER_ALT":{"x":[],"y":[]}
+        }
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            modes[row['MODE']]["x"].push(parseInt(row['MAT_SIDE']))
+            modes[row['MODE']]["y"].push(parseFloat(row['TIME_MS']))
+        }
+
+        var dash_types = ["longdash", "dot", "dashdot"]
+        var counter = 0
+        for (const [key, val] of Object.entries(modes)){
+            modes[key]["mode"] = "lines+markers"
+            modes[key]["type"] = "scatter"
+            modes[key]["name"] = key
+            modes[key]["line"] = {dash:dash_types[counter]}
+            counter++
+            //modes[key]["mode"] =
+            //modes[key]["mode"] =
+        }
+        document.getElementById("plot_times").innerText = ""
+        var traces = Object.values(modes)
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Matrix x Vector product (float32): Time comparison between implementations", subtitle: {text: '10 samples per MAT_SIDE, ran on a AMD Ryzen 5 7600, compiled with -O2'}},
+                xaxis: {title: {text: "MAT_SIDE"}},
+                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f"},
+            }
+        )
+    }
+
+    fetch_data()
+</script>
+++++
+endif::backend-html5[]
+
+Como no gráfico desnecessariamente interativo, podemos ver o impacto da cache na implementação COL_ORDER
+(algoritmo padrão, matriz alinhada por coluna) começando entre lados de 1500 a 2000 elementos, onde a variação de espaço na cache
+disponível decorrente da operação normal do computador gera mais instabilidades no tempo de execução das multiplicações,
+dado que os elementos de uma mesma linha mais distantes entre si tendem a ser substituídos pela falta de acessos
+próximos (localidade espacial) e relativa inatividade desde seu último acesso (localidade temporal). A partir dos 3000,
+temos um overhead mínimo observado de 150% em relação ao ROW_ORDER (algoritmo padrão, matriz alinhada por coluna). 
+Apesar da causa do efeito se dar principalmente pelo cache, não se pode relacionar diretamente estas faixas de tamanhos
+alocados à memória do programa com o tamanho da cache. Dado a concorrência de execuções de instruções e fetching de
+dados dos processadores modernos, acessos a memória teriam um impacto quando o tempo de execução das instruções for
+menor que o tempo de acesso. Isso serve para a discordância entre os tamanhos de matrizes e o cache: usando o memcheck
+do Valgrind ou calculando à mão o máximo de mamória alocada, verifica-se que o cache L1 é teoricamente esgotado muito
+mais cedo que o encontrado para sinalizar diferenças, p.ex. O algoritmo dedicado a matrizes ordenadas por coluna,
+entretanto, obteve os melhores tempos da comparação entre as três implementações, aproveitando de um fator futuramente
+abordado de otimização para hardware.
+
+=== Relacionados
 
 - Computer Architecture: A Quantitative Approach (é um livro do patterson, não O livro do patterson, 
 o Computer Organization and Design é o que se veria em Arquitetura de Computadores);
+- O algoritmo alternativo de multiplicação de matriz por vetor me foi apresentado na disciplina de Computação Gráfica, o
+link:https://www.dca.ufrn.br/~lmarcos/courses/compgraf/notes/index.html[slide referente a nota de aula 3] contém breve
+menção do método;
 
+=== Íntegra dos códigos:
 
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py[]
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
