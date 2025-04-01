@@ -1,4 +1,4 @@
-== Gargalo de Von Neumann e a memória cache: demonstração do impacto da cache no produto de matriz com vetor
+== Gargalo de Von Neumann e a cache
 
 === Introdução
 O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
