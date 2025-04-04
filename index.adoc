@@ -14,7 +14,12 @@ Marcos Irigoyen <mvbirigoyen@gmail.com>
 Olá, esta é a página index provisória para os relatórios da matéria Programação Paralela, possivelmente também da
 matéria de sistemas distribuídos.
 
-:imagesdir: relatorio_1
+:imagesdir: relatorio_1/resources
 [[gargalo-de-von-neumann]]
 [desc="Sobre o impacto da eficiência de cache em algoritmos"]
 include::relatorio_1/Relatorio.adoc[]
+
+:imagesdir: relatorio_2/resources
+[[pipelining-e-vetorizacao]]
+[desc="Sobre pipelining, vetorização e um tico de flags de compilação"]
+include::relatorio_2/Relatorio.adoc[]

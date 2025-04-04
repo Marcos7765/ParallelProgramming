@@ -1,4 +1,6 @@
 == Gargalo de Von Neumann e a Cache
+__Pesquise todo termo que te despertar interesse__
+
 === Introdução
 O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
 como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
@@ -12,7 +14,6 @@ tentativas de amenizá-la, a cache; demonstrando a importância de se implementa
 a comparação de três soluções diferentes para a multiplicação entre matriz e vetor.
 
 ==== O Gargalo de Von Neumann
-__Pesquise todo termo que te despertar interesse__  
 
 Pela primeira metade do século XX os computadores eram limitados a aplicações específicas e caminhávamos vagarosamente
 na programabilidade de máquinas computadoras, com sistemas que deviam ser rearranjados fisicamente para diferentes
@@ -57,14 +58,12 @@ como uma soma dos vetores coluna da matriz de entrada ponderada pelos escalares 
 image::algs.svg[width=65%, align=center, opts=inline]
 
 === Resultados
-
-ifdef::backend-html5[]
 ++++
 <script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
 <div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
 <script>
     async function fetch_data (){
-        const response = await fetch("aggregated_data.csv")
+        const response = await fetch("resources/aggregated_data.csv")
         const text = await response.text()
         const rows = text.split("\n").map(row => row.split(','))
         var data = []
@@ -102,8 +101,6 @@ ifdef::backend-html5[]
             modes[key]["name"] = key
             modes[key]["line"] = {dash:dash_types[counter]}
             counter++
-            //modes[key]["mode"] =
-            //modes[key]["mode"] =
         }
         document.getElementById("plot_times").innerText = ""
         var traces = Object.values(modes)
@@ -119,7 +116,6 @@ ifdef::backend-html5[]
     fetch_data()
 </script>
 ++++
-endif::backend-html5[]
 
 Como no gráfico desnecessariamente interativo, podemos ver o impacto da cache na implementação COL_ORDER
 (algoritmo padrão, matriz alinhada por coluna) começando entre lados de 1500 a 2000 elementos, onde a variação de espaço na cache
@@ -163,7 +159,7 @@ include::main.cpp[]
 include::run_tests.sh[]
 ----
 ====
-.process_data.py[]
+.process_data.py
 [%collapsible]
 ====
 [source, python, linenums]

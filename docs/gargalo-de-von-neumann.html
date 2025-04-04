@@ -464,6 +464,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 </ul>
 </li>
+<li><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a>
+</li>
 </ul>
 </div>
 </div>
@@ -471,6 +473,9 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <div class="sect1">
 <h2 id="gargalo-de-von-neumann">Gargalo de Von Neumann e a Cache</h2>
 <div class="sectionbody">
+<div class="paragraph">
+<p><em>Pesquise todo termo que te despertar interesse</em></p>
+</div>
 <div class="sect2">
 <h3 id="_introdução">Introdução</h3>
 <div class="paragraph">
@@ -487,9 +492,6 @@ a comparação de três soluções diferentes para a multiplicação entre matri
 </div>
 <div class="sect3">
 <h4 id="_o_gargalo_de_von_neumann">O Gargalo de Von Neumann</h4>
-<div class="paragraph">
-<p><em>Pesquise todo termo que te despertar interesse</em></p>
-</div>
 <div class="paragraph">
 <p>Pela primeira metade do século XX os computadores eram limitados a aplicações específicas e caminhávamos vagarosamente
 na programabilidade de máquinas computadoras, com sistemas que deviam ser rearranjados fisicamente para diferentes
@@ -547,6 +549,64 @@ como uma soma dos vetores coluna da matriz de entrada ponderada pelos escalares 
 </div>
 <div class="sect2">
 <h3 id="_resultados">Resultados</h3>
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+<script>
+    async function fetch_data (){
+        const response = await fetch("resources/aggregated_data.csv")
+        const text = await response.text()
+        const rows = text.split("\n").map(row => row.split(','))
+        var data = []
+        var headers = rows[0]
+        const num_cols = rows[0].length
+        for (var i = 1; i < rows.length; i++){
+            if (rows[i].length != num_cols){continue}
+            var row = {}
+            for (var j = 0; j < num_cols; j++){
+                row[headers[j]] = rows[i][j]
+            }
+            data.push(row)
+        }
+        processData(data)
+    }
+
+    function processData(allRows){
+        var modes = {
+            "ROW_ORDER":{"x":[],"y":[]},
+            "COL_ORDER":{"x":[],"y":[]},
+            "COL_ORDER_ALT":{"x":[],"y":[]}
+        }
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            modes[row['MODE']]["x"].push(parseInt(row['MAT_SIDE']))
+            modes[row['MODE']]["y"].push(parseFloat(row['TIME_MS']))
+        }
+
+        var dash_types = ["longdash", "dot", "dashdot"]
+        var counter = 0
+        for (const [key, val] of Object.entries(modes)){
+            modes[key]["mode"] = "lines+markers"
+            modes[key]["type"] = "scatter"
+            modes[key]["name"] = key
+            modes[key]["line"] = {dash:dash_types[counter]}
+            counter++
+            //modes[key]["mode"] =
+            //modes[key]["mode"] =
+        }
+        document.getElementById("plot_times").innerText = ""
+        var traces = Object.values(modes)
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Matrix x Vector product (float32): Time comparison between implementations", subtitle: {text: '10 samples per MAT_SIDE, ran on a AMD Ryzen 5 7600, compiled with -O2'}},
+                xaxis: {title: {text: "MAT_SIDE"}},
+                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f"},
+            }
+        )
+    }
+
+    fetch_data()
+</script>
 <div class="paragraph">
 <p>Como no gráfico desnecessariamente interativo, podemos ver o impacto da cache na implementação COL_ORDER
 (algoritmo padrão, matriz alinhada por coluna) começando entre lados de 1500 a 2000 elementos, onde a variação de espaço na cache
@@ -835,7 +895,7 @@ done</code></pre>
 </div>
 </details>
 <details>
-<summary class="title">process_data.py[]</summary>
+<summary class="title">process_data.py</summary>
 <div class="content">
 <div class="listingblock">
 <div class="content">
@@ -889,7 +949,7 @@ data.rename(columns={"MAT_COL":"MAT_SIDE"}).to_csv(sys.argv[3])</code></pre>
 </div>
 </div>
 <div class="paragraph nav-footer">
-<p>↑ Up: <a href="index.html">Programação Paralela</a></p>
+<p>↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a> →</p>
 </div>
 </div>
 <div id="footer" style="max-width: 70%;">

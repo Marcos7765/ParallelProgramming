@@ -440,7 +440,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
              .nav-footer{text-align: center; margin-top: auto;}
              .nav-footer > p > a {white-space: nowrap;}</style>
 </head>
-<body id="index" class="book toc2 toc-left">
+<body id="pipelining-e-vetorizacao" class="book toc2 toc-left">
 <div id="header" style="max-width: 70%;">
 <h1>Programação Paralela</h1>
 <div class="details">
@@ -449,35 +449,300 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Sumário</div>
-<p><span class="toc-root toc-current"><a href="index.html">Programação Paralela</a></span></p><ul class="sectlevel1">
+<p><span class="toc-root"><a href="index.html">Programação Paralela</a></span></p><ul class="sectlevel1">
 <li><a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a>
 </li>
-<li><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a>
+<li><a href="pipelining-e-vetorizacao.html"><span class="toc-current">Pipelining e Vetorização</span></a>
+<ul class="sectlevel2">
+<li><a href="pipelining-e-vetorizacao.html#_introdução_2">Introdução</a>
+</li>
+<li><a href="pipelining-e-vetorizacao.html#_experimento">Experimento</a>
+</li>
+<li><a href="pipelining-e-vetorizacao.html#_resultado">Resultado</a>
+</li>
+<li><a href="pipelining-e-vetorizacao.html#_relacionados_2">Relacionados</a>
+</li>
+</ul>
 </li>
 </ul>
 </div>
 </div>
 <div id="content" style="max-width: 70%;">
-<div id="preamble">
+<div class="sect1">
+<h2 id="pipelining-e-vetorizacao">Pipelining e Vetorização</h2>
 <div class="sectionbody">
+<div class="sect2">
+<h3 id="_introdução_2">Introdução</h3>
 <div class="paragraph">
-<p>Olá, esta é a página index provisória para os relatórios da matéria Programação Paralela, possivelmente também da
-matéria de sistemas distribuídos.</p>
+<p>Se você viu a postagem anterior, pode ter se perguntando: "por que o algoritmo otimizado para matrizes alinhadas por
+coluna era mais rápido que o normal, otimizado para alinhamento por linha?" e, se fingirmos que não dá para ler o título
+desse post, poderíamos pensar ainda que o esperado era de que o algoritmo normal fosse mais rápido, visto que cada
+\(c_i\) calculado só precisava de uma lida e escrita do elemento no vetor de saída na memória a cada iteração,
+enquanto que cada elemento da saída era lido e escrito N+1 vezes no algoritmo alternativo, onde N é o número de
+elementos do vetor de saída. O que o leitor hipotético que pensou demais na quantia de acessos do vetor de saída não
+pensou, entretanto, são nas demais técnicas que os processadores empregam para acelerar o processamento de instruções.
+Neste caso, a funcionalidade central na obtenção do ganho é a de pipelining de instruções. Será abordado o funcionamento
+do pipelining e execução em blocos, para então seguirmos a vetorização/instruções SIMD, compiladores e assembly.</p>
+</div>
+<div class="sect3">
+<h4 id="_pipelining">Pipelining</h4>
+<div class="paragraph">
+<p>Para explicar pipelining, vale um resumo de como processadores executam instruções. Assumindo um modelo simplificado, de
+execução serial da instruções e tempos de acesso desprezíveis, temos quatro etápas para execução de uma instrução:
+busca, decodificação, execução, e armazenamento. Durante a execução de uma instrução neste processador básico, as
+componentes relacionadas a cada etapa ou sub-etapa que não esteja sendo ativamente executada em dado ciclo do
+processador não são aproveitadas, sendo necessário a espera de toda a execução de uma instrução para o começo da
+próxima. Para solucionar este problema surge o pipelining, adicionando buffers entre as etapas/sub-etapas de execução,
+de forma que suas componentes possam ser utilizadas logo após seu uso, possibilitando a execução de múltiplas
+instruções simultaneamente em um único processador (um único core de processador, considerando multi-cores).</p>
+</div>
+<div class="paragraph">
+<p>Este multiprocessamento, entretanto, é naturalmente limitado pela ordem de execução das instruções e suas
+interdependências. Não se pode realizar uma operação baseada no resultado de outra que ainda não foi armazenada, por
+exemplo. Para remediar isso tanto processadores quanto compiladores procuram otimizar a ordem de execução das instruções
+para maximizar o aproveitamento do pipelining sem alterar o "espírito" do código. No contexto do produto entre matriz e
+vetor apresentado na última postagem, a implementação para matrizes alinhadas por linha tinha a dependência da conclusão
+de todas as multiplicações entre elementos anteriores do vetor linha e vetor de entrada E seus respectivos incrementos
+no elemento do vetor de saída para que se pudesse incrementar o resultado da multiplicação seguinte; enquanto que o
+algoritmo otimizado para matrizes alinhadas conseguia começar a ponderação do vetor coluna por seu respectivo escalar do
+vetor de entrada e seu incremento ao vetor de saída independentemente.</p>
+</div>
+<div class="paragraph">
+<p>A execução de múltiplas instruções independentes entre si ao mesmo tempo por pipelining foi um avanço significante no
+desempenho de processadores (que conforme será mostrado, ainda rende muita performance atualmente) que não é fruto
+direto de melhorias no processo de fabricação (diminuição do tamanho de transistores, empacotamento, e outros
+contribuintes à lei de Moore e a antiga escala de Dennard), mas de avanços no design e arquitetura dos computadores.
+Não raramente, entretanto, tem-se a situação onde as várias instruções a serem executadas se tratam da mesma instrução,
+aplicada a dados diferentes — operações matriciais, como as do exemplo anterior, são casos desse tipo. Pela extensa
+presença desse padrão de processamento em aplicações numéricas, eventualmente surgiram nos supercomputadores a
+capacidade de processar múltiplos dados a partir da mesma instrução, adicionando mais componentes responsáveis pela
+execução da instrução ao processador. Daí surgiram os atualmente sumidos computadores vetoriais (veja o Fugaku para o
+mais próximo <span class="line-through">que eu sei</span> disso na atualidade) e a ideia de vetorização.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_vetorização">Vetorização</h4>
+<div class="paragraph">
+<p>Como no final da sessão acima, a vetorização se dá pela execução simultânea de uma instrução sobre diferentes dados.
+Mais especificamente, se tratam de instruções que operam sobre registradores especiais (especiais, mas que podem ser
+usados como registradores normais) capazes de abrigar múltiplos dados de forma que os dados contidos nestes
+registradores sejam processados paralelamente. As restrições sofridas no pipelining são herdadas pela vetorização, ainda
+acrescidas de fatores como a limitação de operações possíveis de se vetorizar e a responsabilidade pelo lado da
+aplicação de aplicar as instruções. Este último, conforme novos padrões de instruções vetoriais são lançados, conflita
+com objetivos como o reaproveitamento de programas compilados em múltiplas máquinas, para além de exigir esforços de
+desenvolvimento para integração dessas instruções em compiladores, interpretadores (ainda que td seja JIT) ou, quando
+as heurísticas desses dois não funcionam, na aplicação (a máxima disso é o ffmpeg, onde adoram falar que fazem isso).</p>
 </div>
 </div>
 </div>
+<div class="sect2">
+<h3 id="_experimento">Experimento</h3>
+<div class="paragraph">
+<p>Para demonstrar o efeito de otimizar um código para usar pipelining e/ou vetorização, poderíamos pegar o algoritmo
+convencional de multiplicação matriz-vetor da postagem passada, implementá-lo com o que vou explicar ser "desenrolamento
+de loop", e comparar com o orignal e o algoritmo alternativo para colunas. O requisito da atividade pede outra coisa,
+então isso fica de exercício para o leitor. Para demonstrar o efeito de otimizar um código para usar pipelining e/ou
+vetorização, vamos fazer uma comparação simples com implementações de uma função que retorne a soma de todos os valores
+de um vetor (e também com o tempo que demora para preenchê-lo com algum cálculo simples). A forma mais simples desse
+algoritmo se resume a criar uma variável (acumulador) inicializada em zero e iterar pelo vetor somando à variável o
+valor de cada elemento. Aqui, como no §2 de Pipelining, cada instrução de incremento do valor de um elemento ao
+acumulador é dependente da resolução dessa instrução com os elementos anteriores, impossibilitando o aproveitamento do
+pipelining e/ou vetorização.</p>
+</div>
+<div class="paragraph">
+<p>Para solucionar isso, podemos "desenrolar" o loop, reduzindo o número de iterações e adicionando, em cada iteração, o
+processamento de mais elementos. Para isso, vamos transformar algumas coisas: ao invés de iterar por elementos do vetor,
+vamos considerar iterar por blocos do vetor, onde cada bloco equivale a um determinado número de elementos. Assumindo
+que o tamanho do vetor é divisível exatamente pelo tamanho do bloco, iterar por R blocos do vetor (sendo R a razão entre
+o tamanho do vetor e o tamanho do bloco) e realizar a operação para cada elemento do vetor. Para a soma dos elementos do
+vetor por um elemento de cada vez (que também poderia ser entendido como um bloco de tamanho 1), temos algo como:</p>
+</div>
+<div class="listingblock">
+<div class="title">Exemplo de soma um a um para um vetor de inteiros (int)</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">int somar_tudo(int* vetor_in, int tamanho){
+    int resultado = 0;
+    for (int i = 0; i &lt; tamanho; i++){
+        resultado += vetor_in[i];
+    }
+    return resultado;
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Enquanto que, fazendo para um bloco de tamanho 2, teríamos:</p>
+</div>
+<div class="listingblock">
+<div class="title">Exemplo de soma em bloco de tamanho 2 para um vetor de inteiros (int)</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">int somar_tudo_bloco_2(int* vetor_in, int tamanho){
+    int acumulador1 = 0;
+    int acumulador2 = 0;
+    int resultado = 0;
+
+    int i = 0; //declarando o i fora do loop para reaproveitar ele pro resto da divisão
+    //você só pode passar esse (2-1) pro lado direito da inequação se usar inteiro sinalado (besteira de impl.)
+    for (; i + (2 - 1) &lt; tamanho; i += 2){
+        acumulador1 += vetor_in[i];
+        acumulador2 += vetor_in[i+1];
+    }
+    //tratando o resto da divisão um a um
+    for (; i &lt; tamanho; i++){
+        resultado += vetor_in[i];
+    }
+    resultado += acumulador1 + acumulador2;
+    return resultado;
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Extra: antes de todas essas considerações de pipelining e vetorização, já havia um tradeoff entre o overhead do loop
+(execução dos jumps e checagem da condição de parada para cada iteração) e o tamanho do programa compilado, numa
+situação parecida com o balanceamento do uso de funções inline. A lógica do loop aí dependeria da resolução do acesso ao
+vetor para que possa começar sua execução, então boa parte desse impacto seria amortecido pelo pipelining com a soma ao
+acumulador. Enquanto que isso é especulação minha, você pode gerar o assembly no gcc com o parâmetro -S, jogar em um
+simulador de processador com pipeline (salve DrMIPS), e me mandar um e-mail dizendo se estou equivocado.</p>
+</div>
+<div class="paragraph">
+<p>Por conta do já mencionado problema de compatibilidade binária consequente dos diferentes padrões de instruções
+vetoriais por aí, compiladores como o GCC (que é o compilador padrão desses experimentos) não costumam usar vetorização
+por padrão. Aproveitando(?) isso, o experimento será repetido com as flags de otimização O0, O2 e O3, e todas com a flag
+-march=native, que sinaliza para o GCC compilar o código para ser executado especificamente na arquitetura do
+processador do computador. Para avisos sobre a quando e onde ocorre vetorização, é usada a flag -fopt-info-vec, mas como
+cada função foi implementada por meio de um template, não se pode discernir qual função foi otimizada (todas apontam
+para a mesma linha, se você souber como contornar isso, por favor me avise).</p>
+</div>
+<div class="paragraph">
+<p>Para clarificação, a flag O0 desativa quase todas as otimizações, enquanto que a O2 usa todas as otimizações que não
+tenham um tradeoff entre tamanho do binário e velocidade de execução (logo não vetoriza ou desenrola loops) e a O3
+habilita as demais otimizações que ainda seriam "standard-compliant para todos os programas".</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_resultado">Resultado</h3>
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_wrapper" style="display:flex; flex-direction:column">
+    <div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+    <select id="select_plot_data" name="Dados" style="margin:auto;width:40%">
+        <option value="resources/dados_O0_filtrados.csv" selected>Compilado com -O0</option>
+        <option value="resources/dados_O2_filtrados.csv">Compilado com -O2</option>
+        <option value="resources/dados_O3_filtrados.csv">Compilado com -O3</option>
+        <option value="resources/dados_Ofast_filtrados.csv">Bônus: Compilado com -Ofast</option>
+        <option value="resources/dados_O3unlimited_filtrados.csv">Bônus: Compilado com -O3 e -fvect-cost-model=unlimited</option>
+    </select>
+</div>
+<script>
+    cache = {}
+    async function fetch_data(path){
+        var data = []
+        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
+        else{
+            const response = await fetch(path)
+            const text = await response.text()
+            const rows = text.split("\n").map(row => row.split(','))
+            var headers = rows[0]
+            const num_cols = rows[0].length
+            for (var i = 1; i < rows.length; i++){
+                if (rows[i].length != num_cols){continue}
+                var row = {}
+                for (var j = 0; j < num_cols; j++){
+                    row[headers[j]] = rows[i][j]
+                }
+                data.push(row)
+            }
+            cache[path] = data
+        }
+        processData(data, {flag: path.split('_')[1]})
+    }
+
+    function processData(allRows, extra){
+        var modes = {
+            "SINGLE":{"x":[],"y":[]},
+            "VEC_INIT":{"x":[],"y":[]},
+            "BLOCK2":{"x":[],"y":[]},
+            "BLOCK4":{"x":[],"y":[]},
+            "BLOCK8":{"x":[],"y":[]},
+            "BLOCK16":{"x":[],"y":[]},
+        }
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            modes[row['MODE']]["x"].push(parseInt(row['VEC_SIZE']))
+            modes[row['MODE']]["y"].push(parseFloat(row['TIME_MS']))
+        }
+
+        var dash_types = ["longdash", "dot", "dashdot"]
+        var counter = 0
+        for (const [key, val] of Object.entries(modes)){
+            modes[key]["mode"] = "lines+markers"
+            modes[key]["type"] = "scatter"
+            modes[key]["name"] = key
+            modes[key]["line"] = {dash:dash_types[counter]}
+            counter = (counter+1)%3
+            //modes[key]["mode"] =
+            //modes[key]["mode"] =
+        }
+        document.getElementById("plot_times").innerText = ""
+        var traces = Object.values(modes)
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Vector/Array Sum-up/reduction: Time comparison between implementations", subtitle: {text: `5 samples per VEC_SIZE, float32 vectors, ran on a AMD Ryzen 5 7600, compiled with -${extra.flag}`}},
+                xaxis: {title: {text: "VEC_SIZE"}},
+                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f"},
+            }
+        )
+    }
+    const select = document.getElementById("select_plot_data")
+    fetch_data(select.value)
+    select.addEventListener("change", (event) => {fetch_data(event.target.value)})
+</script>
+<div class="paragraph">
+<p>Como esperado, a soma um-a-um foi a mais lenta das implementações para cada uma das flags testadas. Mais interessante
+que isso, porém, é a mudança entre tamanhos de bloco ótimos de acordo com o nível de otimização: em O0, o quão menor o
+tamanho do bloco, melhor é sua execução. Especula-se que pode ser fruto da falta de otimizações de reordenamento ou
+direcionadas ao pipelining no O0, indo de acordo com o brusco aumento de desempenho obtido em O2 em todas as
+implementações em bloco quando comparadas à singular. Pela O3 tivemos 9 vetorizações ocorrendo nas implementações. Como
+todo tamanho de bloco diferente de 1 haverá dois loops (um para os blocos e outro para o resto), pode-se assumir que
+cada versão em bloco contribuiu 2 vetorizações, indicando que a versão singular também conseguiu vetorização. Não seria
+algo inesperado, assumindo que o compilador seja capaz de fazer o desenrolamento e então a vetorização do código, mas
+indicaria uma falha nos critérios usados para decidir o tamanho do bloco utilizado, dado que o tempo de execução não viu
+melhora entre as versões O2 e O3. Para os demais, o BLOCK16 foi de igual pra igual ao BLOCK8 em O2, e se manteve o
+melhor no O3, mas algo estranho ocorreu às demais implementações em bloco: o tempo de execução aumentou no O3 em relação
+ao O2. Pode, novamente, ser uma decisão errada no critério do O3, que por padrão insere uma checagem em tempo de
+execução para avaliar se vale ou não usar vetorização.</p>
+</div>
+<div class="paragraph">
+<p>Como teste, uma versão extra em 03 foi compilada sobrescrevendo o critério para sempre assumir como viável a
+vetorização, sem testes em run-time. Não foi percebido mudança significativa no desempenho. Outra execução extra
+utilizou a flag -Ofast, que completa O3 com as demais otimizações que não seriam "standard-compliant" para todos os
+programas. Nela, finalmente todas as versões diferentes da mesma função eram otimizadas à mesma velocidade, próxima ao
+obtido pela BLOCK16 em O3 (coletar mais amostras poderia ser interessante). P.S.: a causa provavel do melhor resultado
+ser com BLOCK16 é pelos registradores vetoriais de 512 bits, que conseguiriam guardar justamente 16 floats.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_relacionados_2">Relacionados</h3>
 <div class="ulist">
 <ul>
 <li>
-<p><a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> – Sobre o impacto da eficiência de cache em algoritmos</p>
+<p>O optimize options do GCC, você pode checar por <code>gcc --help=optimizers</code> ou pela
+<a href="https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html">página do gcc</a>.</p>
 </li>
 <li>
-<p><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a> – Sobre pipelining, vetorização, e um mau sentimento sobre otimizadores vetoriais</p>
+<p>Em um momento considerei explicar formas com que os exemplos com matrizes poderiam ser vetorizados, usando FMA para o
+algoritmo otimizado para colunas e AVX para o algoritmo otimizado para linhas. Instruções FMA são bem na cara sobre o
+que fazem (Fused Multiply Add) e tem instruções pra encher um registrador vetorial com um único valor de boa, para o
+caso do algoritmo por linhas, por conta do acumulador único do original, você teria que somar os valores dos
+registradores entre si, e <a href="https://www.aussieai.com/book/ch30-vectorized-sum-reduction">este excerto aqui</a> chegava
+exatamente nisso usando o hadd</p>
 </li>
 </ul>
 </div>
+</div>
+</div>
+</div>
 <div class="paragraph nav-footer">
-<p>Next: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> →</p>
+<p>← Previous: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> | ↑ Up: <a href="index.html">Programação Paralela</a></p>
 </div>
 </div>
 <div id="footer" style="max-width: 70%;">
