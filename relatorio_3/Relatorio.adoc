@@ -1,0 +1,181 @@
+== Fontes de demanda por performance: precisão
+=== Introdução
+Intercedendo os papos sobre otimização para hardware, quero (no sentido que não quero não fazer um relatório valendo
+nota a toa) falar um pouco sobre uma das principais razões a quais essa jornada de otimização de programas é feita:
+precisão. Parafraseando a introdução da primeira postagem, que é bem conveniente pra esse assunto:
+
+[quote, Eu mesmo, em <<Gargalo de Von Neumann e a Cache>>]
+----
+O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
+como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
+na capacidade dos sistemas computacionais, enquanto que os sistemas computacionais atuais influenciam no uso ou
+elaboração de novos algoritmos e aumento da carga computacional de algoritmos já existentes. Com o passar do tempo,
+entretanto, os aprimoramentos de performance nos computadores se manifestam por meios menos triviais que somente o
+aumento da velocidade dos processadores, mas pela introdução de novas componentes às máquinas que, por seu natureza,
+necessitam de uma mínima consideração do desenvolvedor para que sejam aproveitadas devidamente.
+----
+
+Este semi jogo de gato e rato entre problemas/algoritmos e sistemas computacionais, (um dos) motor(es) da busca por
+performance, é motivado por dois fatores: precisão e tempo. Nem todo o problema tem uma solução exata e absoluta. Dos
+problemas que, de algum jeito, tem esse tipo de solução, não costumamos ter todos os dados para calculá-la e/ou é
+inviável computacionalmente de obtê-la. Para contornar isso, então, simplificamos modelos, fazemos aproximações,
+realizamos estimativas, e por aí vai. O mais imediatamente acessível exemplo disso são os números irracionais:
+[.line-through]#inevitavelmente, todas as representações de números que usamos são discretas
+(descartado por falta de tempo)# como a memória de um computador físico é finita, não podemos armazenar números de fato
+reais, então criamos representações discretas de subconjuntos finitos de números reais, comumente através de números de
+ponto flutuante. A capacidade de representação de um determinado tipo de número de ponto flutuante é proporcional a
+quantia de números inteiros que podemos combinar para representá-los, isto é, é proporcional ao tamanho de memória usado
+pelo tipo. O quão mais precisamente queremos representar essa gama de números reais, então, mais processamento exigimos
+para operar sobre estas representações, e toda vez que estas operações resultam em um valor não representável pelo tipo,
+aproximamos-o a um valor no espaço da representação.
+
+Outra forma de ver isso é olhando o "infinito": é bem inconveniente somar infinitos termos de uma série de taylor para
+se calcular um dado número. Como, a depender do número, poderíamos sequer armazená-lo por completo em um computador
+digital, ou a partir de certo ponto suas partes ínfimas não afetam na sua aplicação, podemos usar uma aproximação do
+número a partir de um número finito de termos. As vezes esta restrição no número de termos é causada pela falta de
+poder computacional para processá-los mais em tempo hábil, e voltamos à busca de mais recursos computacionais para a
+busca de maior precisão na resolução de tarefas.
+
+Para exemplificar isso, vamos misturar esses casos através do cálculo de uma aproximação de latexmath:[\pi] pela fórmula
+de Chudnovsky, que usa uma série convergente ao inverso de latexmath:[\pi] para o cálculo:
+[stem]
+++++
+\frac{1}{\pi} = 12* \sum^\infty_{n=0}{
+    \frac{(-1)^n(6n)!}{(3n)!(n!)^3} \cdot \frac{13591409+545140134n}{640320^{3n+3/2}}
+}
+++++
+
+=== Experimento
+Para simbolizar estes fatores levantados na introdução, focaremos em três variáveis: o número de termos usados na 
+aproximação, representando a complexidade dos algoritmos; as casas de precisão da aproximação, para representar a
+precisão das soluções que obtemos; e o tempo, representando a si mesmo, mas também a capacidade/viabilidade da solução.
+Para lidar com as limitações de casas de precisão dos tipos de pontos flutuantes padrão, foi usada a biblioteca GNU 
+MPFR, uma biblioteca para lidar com pontos flutuantes de precisão arbitrária, usando floats de 2^15 bits de precisão 
+(capazes de calcular latexmath:[\pi] com mais de 1000 casas de precisão, apesar de não ter tido tempo de chegar até lá
+com minha estratégia de amostragem). As casas de precisão da aproximação são calculadas a partir da diferença entre um
+valor referência de latexmath:[\pi] fornecido pela MPFR para a precisão escolhida e o valor calculado pela fórmula.
+
+=== Resultado
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_times" style="margin:auto;width:90%;aspect-ratio: 16 / 10">Se você está vendo isso aqui, o script do plot deu pau</div>
+<script>
+    async function fetch_data (){
+        const response = await fetch("resources/aggregated_data_r3.csv")
+        const text = await response.text()
+        const rows = text.split("\n").map(row => row.split(','))
+        var data = []
+        var headers = rows[0]
+        const num_cols = rows[0].length
+        for (var i = 1; i < rows.length; i++){
+            if (rows[i].length != num_cols){continue}
+            var row = {}
+            for (var j = 0; j < num_cols; j++){
+                row[headers[j]] = rows[i][j]
+            }
+            data.push(row)
+        }
+        processData(data)
+    }
+
+    function processData(allRows){
+        var x_term = []
+        var y_time = []
+        var y_prec = []
+        var y_evol = []
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            x_term.push(parseInt(row['NUM_TERMS']))
+            y_time.push(parseFloat(row['TIME_MS']))
+            y_prec.push(parseInt(row['DECIMAL_PLACES_PRECISION']))
+            y_evol.push(parseInt(row['DECIMAL_PLACES_VAR']))
+        }
+
+        var trace1 = {
+            x: x_term,
+            y: y_prec,
+            name: 'Decimal places precision',
+        }
+        var trace2 = {
+            x: x_term,
+            y: y_time,
+            yaxis: 'y2',
+            name: 'Mean time (ms)',
+        }
+        var trace3 = {
+            x: x_term,
+            y: y_evol,
+            yaxis: 'y3',
+            name: 'Decimal places evolution'
+        }
+
+        traces = [trace1, trace2, trace3]
+        
+        var dash_types = ["longdash", "dot", "dashdot"]
+        var counter = 0
+        for (const trace of traces){
+            trace["mode"] = "lines"
+            trace["type"] = "scatter"
+            trace["line"] = {dash:dash_types[counter]}
+            counter++
+        }
+        document.getElementById("plot_times").innerText = ""
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Precision, time and complexity visualization: Chudnovsky algorithm",
+                subtitle: {text: '5 samples per NUM_TERMS, ran on a AMD Ryzen 5 7600, 2^15 bits float, compiled with -Ofast'}},
+                xaxis: {title: {text: "NUM_TERMS"}},
+                yaxis: {title: {text: "Decimal places precision"}, domain: [0, 0.75]},
+                yaxis2: {title: {text: "mean time (ms)"}, tickformat: ".5f", domain: [0, 0.75], side: 'right', overlaying: 'y'},
+                yaxis3: {title: {text: "Decimal places evolution"}, domain: [0.75, 1], position: -0.2},
+
+            }
+        )
+    }
+
+    fetch_data()
+</script>
+++++
+
+Extra: adicionei dados sobre a casa decimal da diferença de proximidade da estimativa a latexmath:[\pi] entre um
+dado número de termos e calculando com esse mesmo tanto menos um, para se ter uma noção do quão menores são as mudanças
+conforme se aumenta o número de termos. Este dado me parece faltar mais ligação ao progresso em direção a
+latexmath:[\pi], entretanto.
+
+Como se pode ver no gráfico, precisão, complexidade e tempo de execução são correlatos, e a incessante busca por
+soluções mais precisas, que puxam a elaboração de modelos mais complexos, que por sua vez aumentam o tempo de execução,
+sempre precisará de um equilíbrio entre qualidade e agilidade dos resultados.
+
+=== Relacionados
+- link:https://en.wikipedia.org/wiki/Chudnovsky_algorithm[O algoritmo de Chudnovsky na Wikipedia];
+- A biblioteca link:https://www.mpfr.org/[GNU MPFR] e a link:http://www.holoborodko.com/pavel/mpfr/[interface pra C++ que usei].
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====

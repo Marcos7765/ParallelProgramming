@@ -462,7 +462,11 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="pipelining-e-vetorizacao.html#_relacionados_2">Relacionados</a>
 </li>
+<li><a href="pipelining-e-vetorizacao.html#_íntegra_dos_códigos_2">Íntegra dos códigos</a>
+</li>
 </ul>
+</li>
+<li><a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a>
 </li>
 </ul>
 </div>
@@ -734,15 +738,280 @@ algoritmo otimizado para colunas e AVX para o algoritmo otimizado para linhas. I
 que fazem (Fused Multiply Add) e tem instruções pra encher um registrador vetorial com um único valor de boa, para o
 caso do algoritmo por linhas, por conta do acumulador único do original, você teria que somar os valores dos
 registradores entre si, e <a href="https://www.aussieai.com/book/ch30-vectorized-sum-reduction">este excerto aqui</a> chegava
-exatamente nisso usando o hadd</p>
+exatamente nisso usando o hadd.</p>
 </li>
 </ul>
 </div>
 </div>
+<div class="sect2">
+<h3 id="_íntegra_dos_códigos_2">Íntegra dos códigos</h3>
+<details>
+<summary class="title">main.cpp</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-c++ hljs" data-lang="c++">#include &lt;cstdio&gt;
+#include &lt;cstdlib&gt;
+#include &lt;iostream&gt;
+#include &lt;unordered_map&gt;
+#include &lt;string&gt;
+#include &lt;cerrno&gt;
+#include &lt;concepts&gt;
+#include &lt;type_traits&gt;
+#include "utils.h"
+
+void* _checking_malloc(size_t bytesize, int line){
+    void* res = std::malloc(bytesize);
+    if (res == NULL){printf("Allocation error around ln %d\n", line); exit(1);}
+    return res;
+}
+
+#define checking_malloc(bytesize) _checking_malloc(bytesize, __LINE__)
+
+template &lt;typename T&gt;
+void print_vec(T* vec, size_t length){
+    for (auto i = 0; i &lt; length-1; i++){
+        std::cout &lt;&lt; vec[i] &lt;&lt; ", ";
+    }
+    std::cout &lt;&lt; vec[length-1] &lt;&lt; "\n";
+}
+
+enum PRINT_MODE {
+    REGULAR,
+    VECTOR,
+    CSV
+};
+
+typedef utils::_return_data&lt;float&gt; return_data;
+
+template &lt;typename T&gt;
+utils::_return_data&lt;T&gt; init_vec(T* vec_in_out, size_t vec_size){
+    
+    auto start = utils::mark_time();
+    for (size_t i = 0; i &lt; vec_size; i++){
+        vec_in_out[i] = i+i;
+        }
+    auto end = utils::mark_time();
+    return {static_cast&lt;T&gt;(0), utils::calc_time_interval_ms(start, end)};
+}
+
+template &lt;int N, typename T&gt; requires (N &gt; 0)
+static constexpr void unrolling_sum(T* accumulator_vec, T* vec_in, size_t offset){
+    if constexpr (N &gt; 1) {unrolling_sum&lt;N-1, T&gt;(accumulator_vec, vec_in, offset);}
+    accumulator_vec[N-1] += vec_in[offset + N-1];
+}
+
+template &lt;int N, typename T&gt; requires (N &gt; 0)
+static constexpr void reduce_accs(T* accumulator_vec){
+    if constexpr (N &gt; 1) {
+        accumulator_vec[N-2] += accumulator_vec[N-1];
+        reduce_accs&lt;N-1, T&gt;(accumulator_vec);
+    }
+}
+
+template &lt;typename T, int N&gt; requires std::is_arithmetic_v&lt;T&gt; &amp;&amp; (N&gt;=1)
+utils::_return_data&lt;T&gt; reduce_block(T* vec_in, size_t vec_size){    
+    T accumulators[N];
+    for (size_t i = 0; i&lt;N; i++){
+        accumulators[i] = static_cast&lt;T&gt;(0);
+    }
+    auto start = utils::mark_time();
+    size_t i = 0;
+    for (;i+N-1 &lt; vec_size; i+=N){
+        unrolling_sum&lt;N, T&gt;(accumulators, vec_in, i);
+    }
+    for (;i &lt; vec_size; i++){
+        accumulators[0] += vec_in[i];
+    }
+    reduce_accs&lt;N, T&gt;(accumulators);
+    auto end = utils::mark_time();
+    return {accumulators[0], utils::calc_time_interval_ms(start, end)};
+}
+
+typedef return_data (*target_func_ptr)(float*, size_t);
+
+std::unordered_map&lt;std::string, PRINT_MODE&gt; print_flags = {
+    {"-printCSV", CSV},
+    {"-printVec", VECTOR}
+};
+
+std::unordered_map&lt;std::string, target_func_ptr&gt; modes = {
+    {"SINGLE", reduce_block&lt;float,1&gt;},
+    {"BLOCK2",  reduce_block&lt;float, 2&gt;},
+    {"BLOCK4",  reduce_block&lt;float, 4&gt;},
+    {"BLOCK8",  reduce_block&lt;float, 8&gt;},
+    {"BLOCK16", reduce_block&lt;float, 16&gt;},
+};
+
+int main(int argc, char* argv[]){
+    PRINT_MODE print_mode = REGULAR;
+    if (argc &lt; 3){
+        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n", argv[0]);
+        printf("&lt;MODE&gt; being either SINGLE or BLOCK&lt;2 | 4 | 8 | 16&gt;\n");
+        exit(1);
+    } else{
+        if (argc &gt; 4) {
+            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n",
+                argv[4], argv[0]);
+            exit(1);
+        }
+        if (argc == 4){
+            auto temp_print = print_flags.find(argv[3]);
+            if (temp_print == print_flags.end()){
+                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n",
+                    argv[3], argv[0]);
+                exit(1);
+            }
+            print_mode = temp_print-&gt;second;
+        }
+    }
+
+    auto mode = modes.find(argv[1]);
+    if (mode == modes.end()){
+        printf("Invalid mode: %s. Choose between SINGLE or BLOCK&lt;2 | 4 | 8 | 16&gt;\n", argv[1]);
+        exit(1);
+    }
+
+    target_func_ptr func = mode-&gt;second;
+
+    size_t params[1];
+    for (auto i = 0; i &lt; 1; i++){
+        params[i] = std::strtoul(argv[2+i], NULL, 10);
+        if (params[i] == 0 || errno == ERANGE){
+            printf("Invalid parameter: %s.\n", argv[2+i]);
+            exit(1);
+        }
+    }
+
+    float* vec_in = (float*) checking_malloc(params[0]*sizeof(float));
+
+    return_data init_data = init_vec(vec_in, params[0]);
+    return_data exec_data = func(vec_in, params[0]);
+
+    switch (print_mode)
+    {
+    case VECTOR:
+        print_vec(vec_in, params[0]);
+        break;
+    case CSV:
+        printf("%s,%lu,%f\n", "VEC_INIT", params[0], init_data.time_ms);
+        printf("%s,%lu,%f\n", argv[1], params[0], exec_data.time_ms);
+        break;
+    default:
+        printf("Result value: %f; in %f ms\n", exec_data.res, exec_data.time_ms);
+        break;
+    }
+
+    free(vec_in);
+    return 0;
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">run_tests.sh</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">EXEC_FILE="./a.out"
+PYTHON_EXEC=python3
+MODES="SINGLE BLOCK2 BLOCK4 BLOCK8 BLOCK16"
+INPUT_SIZE=10
+MAX_SIZE=100000000 #10^8
+NUM_SAMPLES=5
+STEP=5
+GROWTH_FACTOR=0.5
+OUTPUT_FILE=$1
+STATUS=0
+
+if [ -z "$OUTPUT_FILE" ]
+then
+    echo "Pass the path to an output file, use: $0 &lt;path/to/output&gt;"
+    exit
+fi
+echo MODE,VEC_SIZE,TIME_MS &gt; $OUTPUT_FILE
+
+while [ "$INPUT_SIZE" -lt "$MAX_SIZE" ]
+do
+    for MODE in $MODES
+    do
+        SAMPLE=1
+        while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
+        do
+            echo running "$EXEC_FILE $MODE $INPUT_SIZE -printCSV"
+            $EXEC_FILE $MODE $INPUT_SIZE -printCSV &gt;&gt; $OUTPUT_FILE
+            STATUS=$?
+            if [ "$STATUS" -ne 0 ]
+            then
+                #intended for when the MAT_SIDE is too big for the program to allocate this much memory
+                echo Some error occurred, stopping early.
+                exit
+            fi
+            SAMPLE=$(($SAMPLE+1))
+        done
+    done
+    INPUT_SIZE=$(($INPUT_SIZE+$STEP))
+    STEP=$($PYTHON_EXEC -c "import math; print(int(max((10**math.log10($INPUT_SIZE)//10)*$GROWTH_FACTOR, $STEP)))")
+done</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">process_data.py</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-python hljs" data-lang="python">import pandas as pd
+import matplotlib.pyplot as plt
+import sys
+
+if len(sys.argv) &lt; 4: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;")
+if len(sys.argv) &gt; 4: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;")
+
+data = pd.read_csv(sys.argv[1])
+
+data = data.groupby(['MODE', 'VEC_SIZE']).mean().reset_index()
+
+size = (16,9)
+param_cutoff = 10**9
+fig, ax = plt.subplots(figsize=size)
+
+cutoff = data[data['VEC_SIZE'] &lt; param_cutoff]
+
+for label in pd.unique(data['MODE']):
+    filtered = cutoff[cutoff['MODE']==label]
+    x = filtered['VEC_SIZE']
+    y = filtered['TIME_MS']
+    ax.plot(x, y, label=label, marker='o')
+
+ax.set_xlabel('VEC_SIZE')
+ax.set_ylabel('mean time (ms)')
+ax.set_title("5 samples per VEC_SIZE, ran on a AMD Ryzen 5 7600, compiled with -O0")
+fig.suptitle("Time comparison between algorithms")
+
+linear = True
+#linear = False
+if linear:
+    ax.set_xlim(left=cutoff['VEC_SIZE'].min(), right=cutoff['VEC_SIZE'].max())
+    ax.set_ylim(bottom=data['TIME_MS'].min())
+else:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+ax.legend()
+plt.tight_layout()
+fig.savefig(sys.argv[2])
+data.to_csv(sys.argv[3])</code></pre>
+</div>
+</div>
+</div>
+</details>
+</div>
 </div>
 </div>
 <div class="paragraph nav-footer">
-<p>← Previous: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> | ↑ Up: <a href="index.html">Programação Paralela</a></p>
+<p>← Previous: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> | ↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a> →</p>
 </div>
 </div>
 <div id="footer" style="max-width: 70%;">

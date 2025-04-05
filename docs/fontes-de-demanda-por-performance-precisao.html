@@ -440,7 +440,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
              .nav-footer{text-align: center; margin-top: auto;}
              .nav-footer > p > a {white-space: nowrap;}</style>
 </head>
-<body id="index" class="book toc2 toc-left">
+<body id="fontes-de-demanda-por-performance-precisao" class="book toc2 toc-left">
 <div id="header" style="max-width: 70%;">
 <h1>Programação Paralela</h1>
 <div class="details">
@@ -449,40 +449,433 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div id="toc" class="toc2">
 <div id="toctitle">Sumário</div>
-<p><span class="toc-root toc-current"><a href="index.html">Programação Paralela</a></span></p><ul class="sectlevel1">
+<p><span class="toc-root"><a href="index.html">Programação Paralela</a></span></p><ul class="sectlevel1">
 <li><a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a>
 </li>
 <li><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a>
 </li>
-<li><a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a>
+<li><a href="fontes-de-demanda-por-performance-precisao.html"><span class="toc-current">Fontes de demanda por performance: precisão</span></a>
+<ul class="sectlevel2">
+<li><a href="fontes-de-demanda-por-performance-precisao.html#_introdução_3">Introdução</a>
+</li>
+<li><a href="fontes-de-demanda-por-performance-precisao.html#_experimento_2">Experimento</a>
+</li>
+<li><a href="fontes-de-demanda-por-performance-precisao.html#_resultado_2">Resultado</a>
+</li>
+<li><a href="fontes-de-demanda-por-performance-precisao.html#_relacionados_3">Relacionados</a>
+</li>
+<li><a href="fontes-de-demanda-por-performance-precisao.html#_íntegra_dos_códigos_3">Íntegra dos códigos</a>
+</li>
+</ul>
 </li>
 </ul>
 </div>
 </div>
 <div id="content" style="max-width: 70%;">
-<div id="preamble">
+<div class="sect1">
+<h2 id="fontes-de-demanda-por-performance-precisao">Fontes de demanda por performance: precisão</h2>
 <div class="sectionbody">
+<div class="sect2">
+<h3 id="_introdução_3">Introdução</h3>
 <div class="paragraph">
-<p>Olá, esta é a página index provisória para os relatórios da matéria Programação Paralela, possivelmente também da
-matéria de sistemas distribuídos.</p>
+<p>Intercedendo os papos sobre otimização para hardware, quero (no sentido que não quero não fazer um relatório valendo
+nota a toa) falar um pouco sobre uma das principais razões a quais essa jornada de otimização de programas é feita:
+precisão. Parafraseando a introdução da primeira postagem, que é bem conveniente pra esse assunto:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre>O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
+como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
+na capacidade dos sistemas computacionais, enquanto que os sistemas computacionais atuais influenciam no uso ou
+elaboração de novos algoritmos e aumento da carga computacional de algoritmos já existentes. Com o passar do tempo,
+entretanto, os aprimoramentos de performance nos computadores se manifestam por meios menos triviais que somente o
+aumento da velocidade dos processadores, mas pela introdução de novas componentes às máquinas que, por seu natureza,
+necessitam de uma mínima consideração do desenvolvedor para que sejam aproveitadas devidamente.</pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Este semi jogo de gato e rato entre problemas/algoritmos e sistemas computacionais, (um dos) motor(es) da busca por
+performance, é motivado por dois fatores: precisão e tempo. Nem todo o problema tem uma solução exata e absoluta. Dos
+problemas que, de algum jeito, tem esse tipo de solução, não costumamos ter todos os dados para calculá-la e/ou é
+inviável computacionalmente de obtê-la. Para contornar isso, então, simplificamos modelos, fazemos aproximações,
+realizamos estimativas, e por aí vai. O mais imediatamente acessível exemplo disso são os números irracionais:
+<span class="line-through">inevitavelmente, todas as representações de números que usamos são discretas
+(descartado por falta de tempo)</span> como a memória de um computador físico é finita, não podemos armazenar números de fato
+reais, então criamos representações discretas de subconjuntos finitos de números reais, comumente através de números de
+ponto flutuante. A capacidade de representação de um determinado tipo de número de ponto flutuante é proporcional a
+quantia de números inteiros que podemos combinar para representá-los, isto é, é proporcional ao tamanho de memória usado
+pelo tipo. O quão mais precisamente queremos representar essa gama de números reais, então, mais processamento exigimos
+para operar sobre estas representações, e toda vez que estas operações resultam em um valor não representável pelo tipo,
+aproximamos-o a um valor no espaço da representação.</p>
+</div>
+<div class="paragraph">
+<p>Outra forma de ver isso é olhando o "infinito": é bem inconveniente somar infinitos termos de uma série de taylor para
+se calcular um dado número. Como, a depender do número, poderíamos sequer armazená-lo por completo em um computador
+digital, ou a partir de certo ponto suas partes ínfimas não afetam na sua aplicação, podemos usar uma aproximação do
+número a partir de um número finito de termos. As vezes esta restrição no número de termos é causada pela falta de
+poder computacional para processá-los mais em tempo hábil, e voltamos à busca de mais recursos computacionais para a
+busca de maior precisão na resolução de tarefas.</p>
+</div>
+<div class="paragraph">
+<p>Para exemplificar isso, vamos misturar esses casos através do cálculo de uma aproximação de \(\pi\) pela fórmula
+de Chudnovsky, que usa uma série convergente ao inverso de \(\pi\) para o cálculo:</p>
+</div>
+<div class="stemblock">
+<div class="content">
+\[\frac{1}{\pi} = 12* \sum^\infty_{n=0}{
+    \frac{(-1)^n(6n)!}{(3n)!(n!)^3} \cdot \frac{13591409+545140134n}{640320^{3n+3/2}}
+}\]
 </div>
 </div>
 </div>
+<div class="sect2">
+<h3 id="_experimento_2">Experimento</h3>
+<div class="paragraph">
+<p>Para simbolizar estes fatores levantados na introdução, focaremos em três variáveis: o número de termos usados na
+aproximação, representando a complexidade dos algoritmos; as casas de precisão da aproximação, para representar a
+precisão das soluções que obtemos; e o tempo, representando a si mesmo, mas também a capacidade/viabilidade da solução.
+Para lidar com as limitações de casas de precisão dos tipos de pontos flutuantes padrão, foi usada a biblioteca GNU
+MPFR, uma biblioteca para lidar com pontos flutuantes de precisão arbitrária, usando floats de 2^15 bits de precisão
+(capazes de calcular \(\pi\) com mais de 1000 casas de precisão, apesar de não ter tido tempo de chegar até lá
+com minha estratégia de amostragem). As casas de precisão da aproximação são calculadas a partir da diferença entre um
+valor referência de \(\pi\) fornecido pela MPFR para a precisão escolhida e o valor calculado pela fórmula.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_resultado_2">Resultado</h3>
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_times" style="margin:auto;width:90%;aspect-ratio: 16 / 10">Se você está vendo isso aqui, o script do plot deu pau</div>
+<script>
+    async function fetch_data (){
+        const response = await fetch("resources/aggregated_data_r3.csv")
+        const text = await response.text()
+        const rows = text.split("\n").map(row => row.split(','))
+        var data = []
+        var headers = rows[0]
+        const num_cols = rows[0].length
+        for (var i = 1; i < rows.length; i++){
+            if (rows[i].length != num_cols){continue}
+            var row = {}
+            for (var j = 0; j < num_cols; j++){
+                row[headers[j]] = rows[i][j]
+            }
+            data.push(row)
+        }
+        processData(data)
+    }
+
+    function processData(allRows){
+        var x_term = []
+        var y_time = []
+        var y_prec = []
+        var y_evol = []
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            x_term.push(parseInt(row['NUM_TERMS']))
+            y_time.push(parseFloat(row['TIME_MS']))
+            y_prec.push(parseInt(row['DECIMAL_PLACES_PRECISION']))
+            y_evol.push(parseInt(row['DECIMAL_PLACES_VAR']))
+        }
+
+        var trace1 = {
+            x: x_term,
+            y: y_prec,
+            name: 'Decimal places precision',
+        }
+        var trace2 = {
+            x: x_term,
+            y: y_time,
+            yaxis: 'y2',
+            name: 'Mean time (ms)',
+        }
+        var trace3 = {
+            x: x_term,
+            y: y_evol,
+            yaxis: 'y3',
+            name: 'Decimal places evolution'
+        }
+
+        traces = [trace1, trace2, trace3]
+
+        var dash_types = ["longdash", "dot", "dashdot"]
+        var counter = 0
+        for (const trace of traces){
+            trace["mode"] = "lines"
+            trace["type"] = "scatter"
+            trace["line"] = {dash:dash_types[counter]}
+            counter++
+        }
+        document.getElementById("plot_times").innerText = ""
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Precision, time and complexity visualization: Chudnovsky algorithm",
+                subtitle: {text: '5 samples per NUM_TERMS, ran on a AMD Ryzen 5 7600, 2^15 bits float, compiled with -Ofast'}},
+                xaxis: {title: {text: "NUM_TERMS"}},
+                yaxis: {title: {text: "Decimal places precision"}, domain: [0, 0.75]},
+                yaxis2: {title: {text: "mean time (ms)"}, tickformat: ".5f", domain: [0, 0.75], side: 'right', overlaying: 'y'},
+                yaxis3: {title: {text: "Decimal places evolution"}, domain: [0.75, 1], position: -0.2},
+
+            }
+        )
+    }
+
+    fetch_data()
+</script>
+<div class="paragraph">
+<p>Extra: adicionei dados sobre a casa decimal da diferença de proximidade da estimativa a \(\pi\) entre um
+dado número de termos e calculando com esse mesmo tanto menos um, para se ter uma noção do quão menores são as mudanças
+conforme se aumenta o número de termos. Este dado me parece faltar mais ligação ao progresso em direção a
+\(\pi\), entretanto.</p>
+</div>
+<div class="paragraph">
+<p>Como se pode ver no gráfico, precisão, complexidade e tempo de execução são correlatos, e a incessante busca por
+soluções mais precisas, que puxam a elaboração de modelos mais complexos, que por sua vez aumentam o tempo de execução,
+sempre precisará de um equilíbrio entre qualidade e agilidade dos resultados.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_relacionados_3">Relacionados</h3>
 <div class="ulist">
 <ul>
 <li>
-<p><a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> – Sobre o impacto da eficiência de cache em algoritmos</p>
+<p><a href="https://en.wikipedia.org/wiki/Chudnovsky_algorithm">O algoritmo de Chudnovsky na Wikipedia</a>;</p>
 </li>
 <li>
-<p><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a> – Sobre pipelining, vetorização e um tico de flags de compilação</p>
-</li>
-<li>
-<p><a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a> – Sobre a busca por precisão, seu custo computacional e seu tradeoff com o tempo</p>
+<p>A biblioteca <a href="https://www.mpfr.org/">GNU MPFR</a> e a <a href="http://www.holoborodko.com/pavel/mpfr/">interface pra C++ que usei</a>.</p>
 </li>
 </ul>
 </div>
+</div>
+<div class="sect2">
+<h3 id="_íntegra_dos_códigos_3">Íntegra dos códigos</h3>
+<details>
+<summary class="title">main.cpp</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-c++ hljs" data-lang="c++">#include &lt;cstdio&gt;
+#include &lt;iostream&gt;
+#include &lt;unordered_map&gt;
+#include &lt;string&gt;
+#include &lt;cerrno&gt;
+#include "utils.h"
+#include &lt;mpreal.h&gt;
+
+#ifndef PRECISION
+    #define PRECISION 32768 //2^15, 1000 terms candidate
+#endif
+
+void estimate_pi_chudnovsky(size_t n, mpfr::mpreal* real_out){
+    *real_out = 0.;
+    for (size_t k = 0; k &lt; n; k++){
+        #define rr(x) mpfr::mpreal(x, real_out-&gt;get_prec())
+        #define factorial(x) mpfr::fac_ui(x, real_out-&gt;get_prec())
+
+        //there probably are more casts than needed
+        mpfr::mpreal temp = factorial(6*k)*(rr(545140134)*rr(k) + rr(13591409))/(
+            mpfr::pow(factorial(k), 3)*factorial(3*k)*mpfr::pow(rr(640320), rr(3.*k) +1.5)
+        );
+        *real_out += (k%2 == 0) ? temp : -temp;
+    }
+    *real_out *= rr(12.);
+    *real_out = rr(1.)/(*real_out);
+}
+
+//returns -7 if there's no error for the given precision
+long get_pi_decimal_place_precision(mpfr::mpreal value){
+    mpfr::mpreal err = mpfr::const_pi(value.get_prec()) - value;
+    
+    err = err &gt; 0. ? err : -err;
+    if (err == 0){return -7;}
+    err = mpfr::log10(err);
+    return err &gt; 0. ? 0 : mpfr::ceil(-err).toLong() -1;
+}
+
+enum PRINT_MODE {
+    REGULAR,
+    CSV
+};
+
+
+std::unordered_map&lt;std::string, PRINT_MODE&gt; print_flags = {
+    {"-printCSV", CSV},
+};
+
+
+int main(int argc, char* argv[]){
+    PRINT_MODE print_mode = REGULAR;
+    if (argc &lt; 2){
+        printf("Insufficient arguments, use: %s &lt;NUM_ITER&gt; [-printCSV]\n", argv[0]);
+        exit(1);
+    } else{
+        if (argc &gt; 3) {
+            printf("Too many arguments starting at %s. Use: %s &lt;NUM_ITER&gt; [-printCSV]\n",
+                argv[3], argv[0]);
+            exit(1);
+        }
+        if (argc == 3){
+            auto temp_print = print_flags.find(argv[2]);
+            if (temp_print == print_flags.end()){
+                printf("Invalid argument: %s. Usage: %s &lt;NUM_ITER&gt; [-printCSV]\n",
+                    argv[3], argv[0]);
+                exit(1);
+            }
+            print_mode = temp_print-&gt;second;
+        }
+    }
+
+    size_t params[1];
+    for (auto i = 0; i &lt; 1; i++){
+        params[i] = std::strtoul(argv[1+i], NULL, 10);
+        if (params[i] == 0 || errno == ERANGE){
+            printf("Invalid parameter: %s.\n", argv[1+i]);
+            exit(1);
+        }
+    }
+
+    auto n = params[0];
+    mpfr::mpreal estimated_pi = mpfr::mpreal(0, PRECISION);
+    auto start = utils::mark_time();
+    estimate_pi_chudnovsky(n, &amp;estimated_pi);
+    auto end = utils::mark_time();
+    double time_ms = utils::calc_time_interval_ms(start, end);
+    mpfr::mpreal cmp_evo_pi = mpfr::mpreal(0, PRECISION);
+    estimate_pi_chudnovsky(n-1, &amp;cmp_evo_pi);
+    mpfr::mpreal evolution = (estimated_pi - mpfr::const_pi(estimated_pi.get_prec())) - 
+        (cmp_evo_pi - mpfr::const_pi(estimated_pi.get_prec()));
+    
+    long int display_evo_places = (evolution == 0) ? -7 : mpfr::log10(mpfr::abs(evolution)) &gt; 0. ? 0 : mpfr::ceil(-mpfr::log10(mpfr::abs(evolution))).toLong() -1;
+    long int decimal_places_precision = get_pi_decimal_place_precision(estimated_pi);
+
+    //7 will be our error status to signal to run_tests that going further with this precision won't matter
+    if (display_evo_places==-7 || decimal_places_precision ==-7){exit(7);}
+
+    switch (print_mode)
+    {
+    case CSV:
+        printf("%lu,%ld,%ld,%f\n", n, decimal_places_precision, display_evo_places, time_ms);
+        break;
+    default:
+        printf("Result value: %s; in %f ms with an error around %s (%ld decimal places of precision); delta_error around %s\n", 
+            estimated_pi.toString(decimal_places_precision).c_str(), time_ms, 
+            (estimated_pi - mpfr::const_pi(estimated_pi.get_prec())).toString(decimal_places_precision &gt; 6 ? 6 : decimal_places_precision).c_str(),
+            decimal_places_precision, evolution.toString(2).c_str()
+        );
+        break;
+    }
+    return 0;
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">run_tests.sh</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">EXEC_FILE="./a.out"
+PYTHON_EXEC=python3
+INPUT_SIZE=1
+MAX_SIZE=1000 #10^8
+NUM_SAMPLES=5
+STEP=1
+GROWTH_FACTOR=0.5
+OUTPUT_FILE=$1
+STATUS=0
+
+if [ -z "$OUTPUT_FILE" ]
+then
+    echo "Pass the path to an output file, use: $0 &lt;path/to/output&gt;"
+    exit
+fi
+echo NUM_TERMS,DECIMAL_PLACES_PRECISION,DECIMAL_PLACES_VAR,TIME_MS &gt; $OUTPUT_FILE
+
+while [ "$INPUT_SIZE" -lt "$MAX_SIZE" ]
+do
+    SAMPLE=1
+    while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
+    do
+        echo running "$EXEC_FILE $INPUT_SIZE -printCSV"
+        $EXEC_FILE $INPUT_SIZE -printCSV &gt;&gt; $OUTPUT_FILE
+        STATUS=$?
+        if [ "$STATUS" -ne 0 ]
+        then
+            if [ "$STATUS" -eq 7 ]
+            then
+                echo Reached maximum decimal places for the given precision
+                exit
+            fi
+            #intended for when the MAT_SIDE is too big for the program to allocate this much memory
+            echo Some error occurred, stopping early.
+            exit
+        fi
+        SAMPLE=$(($SAMPLE+1))
+    done
+    INPUT_SIZE=$(($INPUT_SIZE+$STEP))
+done</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">process_data.py</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-python hljs" data-lang="python">import pandas as pd
+import matplotlib.pyplot as plt
+import sys
+
+if len(sys.argv) &lt; 4: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;"); exit(0)
+if len(sys.argv) &gt; 4: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;"); exit(0)
+
+data = pd.read_csv(sys.argv[1])
+
+data = data.groupby(['NUM_TERMS', 'DECIMAL_PLACES_PRECISION', 'DECIMAL_PLACES_VAR'], as_index=False).mean()
+
+
+size = (16,9)
+fig, ax = plt.subplots(figsize=size)
+
+x = data['NUM_TERMS']
+y1 = data['DECIMAL_PLACES_PRECISION']
+y2 = data['TIME_MS']
+
+ax1 = ax.twinx()
+
+line1, = ax.plot(x, y1, c="orange", label="Decimal places", linestyle="--")
+line2, = ax1.plot(x, y2, label="Mean time", linestyle=":")
+
+ax.set_xlabel('NUM_TERMS')
+ax.set_ylabel('Decimal places precision')
+ax1.set_ylabel('Mean time (ms)')
+ax.set_title("5 samples per NUM_TERMS, ran on a AMD Ryzen 5 7600, compiled with -Ofast")
+fig.suptitle("Precision, time and complexity visualization")
+
+linear = True
+#linear = False
+if linear:
+    ax.set_xlim(left=data['NUM_TERMS'].min(), right=data['NUM_TERMS'].max())
+else:
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+
+lines = [line1,line2]
+ax.legend(lines, [line.get_label() for line in lines])
+plt.tight_layout()
+fig.savefig(sys.argv[2])
+data.to_csv(sys.argv[3])</code></pre>
+</div>
+</div>
+</div>
+</details>
+</div>
+</div>
+</div>
 <div class="paragraph nav-footer">
-<p>Next: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> →</p>
+<p>← Previous: <a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a> | ↑ Up: <a href="index.html">Programação Paralela</a></p>
 </div>
 </div>
 <div id="footer" style="max-width: 70%;">
