@@ -240,4 +240,32 @@ algoritmo otimizado para colunas e AVX para o algoritmo otimizado para linhas. I
 que fazem (Fused Multiply Add) e tem instruções pra encher um registrador vetorial com um único valor de boa, para o
 caso do algoritmo por linhas, por conta do acumulador único do original, você teria que somar os valores dos
 registradores entre si, e link:https://www.aussieai.com/book/ch30-vectorized-sum-reduction[este excerto aqui] chegava
-exatamente nisso usando o hadd
+exatamente nisso usando o hadd.
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
