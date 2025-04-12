@@ -1,0 +1,120 @@
+== Threading por hardware e hyperthreading
+=== Introdução
+Chegando ao fim desta primeira parte de capítulos e ao (acredito que) último desenvolvimento "serial" em processadores que será abordado aqui (pensou que ia ter branch prediction? Pensou errado, !), temos o hyperthreading, multithreading ou só threading por hardware, a depender das minúcias de implementação. É um tópico difícil de se demonstrar em isolado por experimentos em computadores comuns contemporâneos, como discuto na seção de experimento, então haverá uma certa disparidade entre o que é mostrado na contextualização e/ou lenga-lenga e o que é demonstrado. Por completude do resumo consto que também menciono as diferenças no multithreading de aplicações limitadas por memória e limitadas por operações.
+
+De forma geral, multithreading se trata da capacidade de múltiplas (lê-se duas) threads operarem em um único core sem a necessidade de toda a troca de contexto pelo lado de software. Podem ser classificadas de acordo com o critério de substituição, similarmente às threads de software (numa equivalência preemptiva -> fine-grained; não-preemptiva -> coarse-grained), e ainda possuem o caso de multithreading simultâneo, onde as múltiplas threads serviriam para execução de instruções em paralelo para aproveitamento de recursos ociosos, como num pipelining, mas usando instruções de outra thread ao invés do exato mesmo programa, evitando a interdependência de resultados.
+
+A grande vantagem das threads de hardware se dão pela rápida troca de contexto: uma thread de hardware é, basicamente, um conjunto de registradores e leitor de instruções adicionais no core, de forma que a troca de contexto possa ser tão direta quanto a mudança de entrada em alguns multiplexadores. Essa agilidade expande as possibilidades para mascaramento de latência ou aproveitamento de tempo ocioso, dado que o overhead da troca de contexto é reduzido. Casos ideais são semelhantes ao de threads de software: programas com períodos de entrada/saída extensos e imascaráveis por períodos de computação, isto é, programas cuja velocidade de execução esteja limitada pela velocidade de acesso à memória. O caso oposto, com programas limitados pela velocidade execução de instruções do processador, depende da implementação de multithreading e a natureza das operações: para um multithreading coarse-grained, não há benefício algum; para uma estratégia fine-grained, como com quantum de tempo, a troca preemptiva de thread em execução implicaria numa perda de desempenho por conta da troca de contexto; e para o caso específico do multithreading simultâneo fica dependente da capacidade de se aproveitar dos recursos ociosos para execução da segunda thread.
+
+Se ainda estivéssemos nos processadores Intel Pentium do início do século, quem sabe, poderíamos visualizar melhor este efeito. A manipulação de threads de hardware por software a nível de aplicação é mínima, com no máximo apelos aos escalonadores do sistema operacional para dedicação de threads (freq. referidos por cores lógicos nesse contexto) específicos. Sem isso, a programação por threads é basicamente uma forma de programação paralela, onde se pode assumir cada core lógico da máquina como uma unidade computadora rodando em paralelo às demais. Arquiteturas alternativas como o ARM modificado da Apple para os processadores M<número> ou os cores econômicos de processadores regulares baseados em chiplets destoam como cores de thread único, impedindo as possibilidades de otimizações SMT.
+
+Para observar os efeitos do multithreading em programas limitados por memória e programas limitados por operações, bem como outros fenômenos ocorridos durante a amostragem, segue a seção do experimento.
+
+=== Experimento
+
+Foram elaboradas duas funções e variações seriais e por thread delas, tal que as funções base representem os dois casos de limitação de velocidade de um programa. Como o aproveitamento das threads pode ser afetado pelo tamanho do problema, arbitrou-se escalas para o tamanho do problema de cada função para se ter uma melhor noção dos efeitos, com uma normalização no tempo dos dados conforme o tempo médio máximo medido para seu tamanho de problema para facilitar a visualização conjunta. Como teste básico de coerência dos dados (tentativa de termo alternativo a teste de sanidade, aceito sugestões), podemos verificar o praticamente mesmo tempo entre a versão serial e a versão em threads para uma única thread.
+
+Como o aproveitamento de threads depende também de uma certa independência entre elas para seu funcionamento, os programas tem uma sincronização mínima: indiretamente através da coerência de cache após escrita dos vetores (dependendo do tamanho e alinhamento do vetor na memória) no programa limitado a memória, e na redução dos valores das somas parciais de uma série calculada no programa limitado a operações.
+
+A aplicação de um número de threads maior que a disponível pelo sistema leva a criação de threads virtuais, que operam como em threads de software. Nestes primeiros dados elas não foram amostradas execuções dos programas com threads virtuais, limitando-se às 12 físicas do processador.
+
+=== Resultado
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_wrapper" style="display:flex; flex-direction:column">
+    <div id="plot_times" style="margin:auto;width:85%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+    <select id="select_plot_data" name="Dados" style="margin:auto;width:40%">
+        <option value="resources/rel4_filtered_data_comp.json" selected> Caso limitado por operações</option>
+        <option value="resources/rel4_filtered_data_memo.json">Caso limitado por memória</option>
+    </select>
+</div>
+<script>
+    cache = {}
+    async function fetch_data(path){
+        var data = []
+        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
+        else{
+            const response = await fetch(path)
+            data = await response.json()
+            cache[path] = data
+        }
+        processData(data, {flag: path.split('_').at(-1).split('.')[0]})
+    }
+
+    function processData(json_data, extra){
+        
+        var series = {}
+        
+        Object.keys(json_data).forEach(key => {
+                series[`${extra.flag.toUpperCase()}_BOUND_SERIAL ${key} scale`] =
+                    json_data[key][`${extra.flag.toUpperCase()}_BOUND_SERIAL`];
+
+
+                series[`${extra.flag.toUpperCase()}_BOUND_THREAD ${key} scale`] =
+                    json_data[key][`${extra.flag.toUpperCase()}_BOUND_THREAD`];   
+            }
+        )
+
+        const dash_types = ["solid","longdash", "dot", "dashdot"]
+        const marker_types = ["star","circle", "cross", "x"]
+        var counter = 0
+        for (const [key, val] of Object.entries(series)){
+            series[key]["mode"] = key.includes("SERIAL") ? "lines" : "lines+markers"
+            series[key]["type"] = "scatter"
+            series[key]["name"] = key
+            series[key]["line"] = {dash:dash_types[counter]}
+            series[key]["marker"] = {symbol:marker_types[counter]}
+            counter = (counter+1)%4
+        }
+        document.getElementById("plot_times").innerText = ""
+        var traces = Object.values(series)
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Time effects of multithreading in varying problem sizes and thread count", subtitle: {text: `10 samples per NUM_THREAD, ran on a AMD Ryzen 5 7600, compiled with -O3`}},
+                xaxis: {title: {text: "NUM_THREADS"}},
+                yaxis: {title: {text: "mean time, normalized per problem scale"}},
+            }
+        )
+    }
+    const select = document.getElementById("select_plot_data")
+    fetch_data(select.value)
+    select.addEventListener("change", (event) => {fetch_data(event.target.value)})
+</script>
+++++
+
+Começando pelo programa limitado por operações, podemos ver uma invariabilidade no tempo relativo das execuções com threads de acordo com as mudanças de tamanho do problema. Este resultado é muito mais uma mostra dos ganhos com paralelismo que com threads em específico, mas não teria essa mesma escala sem o multithreading simultâneo.
+
+O programa limitado por memória, entretanto, tem um comportamento mais caótico: o tamanho do problema é significante para a eficiência das threads, com o caso particular de, para a menor escala amostrada, o programa ser mais lento conforme se aumenta o número de threads. Especulo que esta seja uma consequência de um tamanho de problema ainda pequeno: as chances de elementos do vetor em diferentes threads pertencerem à mesma linha de cache é maior, podendo causar problemas de compartilhamento falso, ou otimizações SIMD que poderiam ser aplicadas ao loop não conseguem ser aproveitadas pelas duas threads ao mesmo tempo. Ao atingir a maior escala amostrada, a versão por threads ainda apresentou um speedup similar ao dos programas limitados por operações, mas estagnou na marca de 4 threads.
+
+=== Relacionados
+- Surpreendentemente link:https://community.intel.com/t5/Software-Archive/what-is-the-relation-between-quot-hardware-thread-quot-and-quot/m-p/1016636[esse post num fórum da Intel] em 2014 dá um bom insight sobre a diferença entre o multithreading geral e o multithreading simultâneo em específico;
+- Estes dois livros de programação paralela também serviram para recobrar a taxonomia das threads: link:https://www.casadocodigo.com.br/products/livro-programacao-paralela[este em português focado em PAD] e o link:https://www.amazon.com/Introduction-Parallel-Programming-Peter-Pacheco/dp/0128046058[mais geral do Pacheco]. Ambos são úteis para programação paralela como um todo e além.
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
