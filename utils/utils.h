@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cstdlib>
 
 namespace utils{
     std::chrono::steady_clock global_clock;
@@ -17,4 +18,12 @@ namespace utils{
         std::chrono::time_point<std::chrono::steady_clock> t_end){
         return std::chrono::duration<double, std::chrono::milliseconds::period>(t_end - t_start).count();
     }
+
+    void* _checking_malloc(size_t bytesize, int line){
+        void* res = std::malloc(bytesize);
+        if (res == NULL){printf("Allocation error around ln %d\n", line); exit(1);}
+        return res;
+    }
+    
+    #define checking_malloc(bytesize) _checking_malloc(bytesize, __LINE__)
 }

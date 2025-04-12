@@ -1,3 +1,4 @@
+[.text-justify]
 = Programação Paralela
 Marcos Irigoyen <mvbirigoyen@gmail.com>
 :toc: left
@@ -28,3 +29,8 @@ include::relatorio_2/Relatorio.adoc[]
 [[fontes-de-demanda-por-performance-precisao]]
 [desc="Sobre a busca por precisão, seu custo computacional e seu tradeoff com o tempo"]
 include::relatorio_3/Relatorio.adoc[]
+
+:imagesdir: relatorio_4/resources
+[[multithreading-e-threads-de-hardware]]
+[desc="Sobre as diferentes formas de multithreading implementadas em hardware e como os programas aproveitam-nas"]
+include::relatorio_4/Relatorio.adoc[]
