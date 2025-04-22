@@ -1,0 +1,370 @@
+== Paralelismo por Threads com OpenMP
+=== Introdução
+Enfim, programação paralela! Retornando um pouco ao papo histórico, as forças motrizes do avanço em sistemas
+computacionais foram, por muito tempo, aplicações militares e/ou científicas. Computadores eram muito mais custosos,
+maiores, e acoplados que os atuais: a montagem dos computadores e suas peças eram inteiramente das empresas de
+computadores da época, como a IBM e a Remmington Rand, que serviam como fabricantes e integradores dos sistemas (e
+locatárias). Boa parte das inovações em arquitetura de computadores partiam dessas "corridas" pelos contratos de
+licitação, como o contrato para o LARC do LLNL (Lawrence Livermore National Laboratory), que gerou o UNIVAC LARC em 1960
+e influenciou o IBM 7030 de 1961. No LARC, já tínhamos acesso à forma geral de comunicação que usamos com OpenMP — 
+memória compartilhada.
+
+Para abarcar as diferentes formas que um ou mais computadores (e hoje em dia, também adequando-se a programas) operam,
+Michael J. Flynn elaborou uma taxonomia baseada no fluxo de dados e instruções ao sistema, de onde surgem as definições
+de SISD ("Single Instruction, Single Data", como os sequenciais), SIMD (MD -> "Multiple Data", como com vetorização),
+MISD (muitíssimo pouco abordado desde a época, SISD acaba ofuscando), e MIMD (mais genérico de todos, ideal para
+sistemas distribuídos). Naturalmente, para processamentos SIMD e MIMD era necessária a distribuição dos dados às
+componentes computacionais, e tanto a limitação pelo custo de memória em si quando pela latência em acesso e transmissão
+de dados entre memórias separadas fizeram dos sistemas de memória compartilhada a primeira alternativa.
+Alternativamente, a comunicação por troca de mensagens surge bem mais tarde, após avanços significativos na redução da
+latência.
+
+Inicialmente, OpenMP surgiu como uma API para programação paralela de memória compartilhada independente de sistema
+operacional e plataforma de hardware, focado em cargas de trabalho particionáveis em cargas paralelas independentes
+entre si, simplificando boa parte do processo de paralelização à inclusão de diretivas ao compilador. Se você viu os
+gráficos obtidos na postagem anterior, teve um vislumbre do potencial de redução do tempo de execução em um programa
+paralelo com OpenMP. Aqui, vamos abordar o uso do diretiva `omp parallel for` para paralelização de loops com um exemplo
+no cálculo da quantia de números primos de 2 (ou 1, ou 0) a um N arbitrário, sobretudo abordando os primeiros pitfalls
+que se podem encontrar na paralelização de um algoritmo. A partir daqui, tudo tem um pouco de seção de experimentos.
+
+=== O algoritmo base: o Crivo de Erastóstenes
+
+Existem múltiplos algoritmos para o cálculo de números primos, e apesar do Crivo não ser um dos primeiros a se pensar,
+é um algoritmo simples: você lista todos os números entre 2 e o N alvo e itera por cada número — se o número não estiver
+marcado, ele é um número primo: você adiciona ao total de números primos e marca cada múltiplo desse número que esteja
+contido na lista; se o número estiver marcado, ele é múltiplo de um número primo e pode ser ignorado. Em contraste ao
+primeiro algoritmo que se pode pensar (para cada número, verificar se ele é divisível por algum dos números anteriores
+a ele), o cálculo reduz a quantia de comparações feitas às custas de um maior uso de memória. Com algumas otimizações,
+como redução do espaço de busca aos números ímpares (porque todo número par ou é 2 ou é múltiplo dele) e marcação a
+partir do quadrado do número (múltiplos menores já seriam marcados por primos menores), temos o código serial:
+
+[source, cpp]
+----
+//for further details, check the source on the repository.
+inline void mark_multiples(unsigned long base_index, unsigned long N, bool* odd_integer_field){
+
+    unsigned long start = i_val_square_index(base_index); //base_index + square offset
+    unsigned long incr = i_odd_multiples_incr(base_index);
+    unsigned long limit = (N-3)/2;
+    for (unsigned long i = start; i <= limit; i+= incr){
+        odd_integer_field[i] = true;
+    }
+}
+
+return_data count_primes_serial(unsigned long N, unsigned long num_threads){
+
+    bool* odd_integer_field = (bool*)calloc(N/2 +1, sizeof(bool));
+    unsigned long prime_count = (N >= 2) ? 1 : 0;
+    unsigned long N_in_odd_index = (N-3)/2;
+    auto start = utils::mark_time();
+
+    for (unsigned long i = 0; i <= N_in_odd_index; i++){
+        if (!odd_integer_field[i]){
+            mark_multiples(i, N, odd_integer_field);
+            prime_count++;
+        }
+    }
+
+    auto end = utils::mark_time();
+    free(odd_integer_field);
+    return {prime_count, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+Imaginemos que eu emocionado com o desempenho visto no relatório anterior, coloco cegamente a diretiva de `parallel for`
+na função `count_primes_serial`, sem considerar nem o funcionamento do algoritmo e nem o funcionamento do próprio
+OpenMP, resultando na função:
+
+[source, cpp]
+----
+return_data count_primes_naive_parallel(unsigned long N, unsigned long num_threads){
+
+    bool* odd_integer_field = (bool*)calloc(N/2 +1, sizeof(bool));
+    unsigned long prime_count = (N >= 2) ? 1 : 0;
+    unsigned long N_in_odd_index = (N-3)/2;
+    auto start = utils::mark_time();
+
+    #pragma omp parallel for num_threads(num_threads)
+    for (unsigned long i = 0; i <= N_in_odd_index; i++){
+        if (!odd_integer_field[i]){
+            mark_multiples(i, N, odd_integer_field);
+            prime_count++;
+        }
+    }
+
+    auto end = utils::mark_time();
+    free(odd_integer_field);
+    return {prime_count, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+E, para montar um gráfico bonito, começo a coletar os dados da execução: tempo e número de primos para cada combinação
+de número de threads, N arbitrário e modo de execução que eu decidir. Ao coletar os dados, muito provavelmente
+encontrarei como a seguinte tabela (feita apartir de dados coletados na execução desses códigos):
+
+[cols="20*"]
+|===
+include::ascii_table.text[]
+|===
+
+Podemos ver pela média não-natural e variância não-nula na contagem de primos de que os resultados da versão paralela
+variam entre as amostras, o que não faz sentido para um algoritmo determinístico como este. Para piorar, além de
+incorreto, o programa também está mais lento, perdendo significativamente a comparação por tempo em todos os casos.
+Estes resultados são consequências da negligência a análise do algoritmo em si e do custo adicional introduzido pelo
+OpenMP para uso das threads.
+
+==== Analisando e corrigindo os problemas
+
+O primeiro problema se dá por dois fatores: o acesso simultâneo da variável prime_count e a dependência entre iterações
+dos resultados de iterações anteriores. Para o primeiro fator, é possível que múltiplas threads tentem alterar o
+prime_count ao mesmo tempo, de forma que as alterações feitas por uma thread não cheguem a tempo de serem incorporadas
+nas demais, que efetivamente ignorariam-na. Para solucionar isso, podemos usar diretivas atômicas (para uso de 
+instruções atômicas, i.e. que não podem ser interrompidas no meio), seções críticas (que só podem ser acessadas por uma
+única thread por vez), ou variáveis privadas. Para solucionar isso, dou a cada thread uma versão privada de prime_count
+e, no fim da execução paralela, somo todos os prime_count privados em uma só prime_count — tudo através da claúsula
+reduce. O segundo fator é menos trivial, é uma quebra do princípio de independência entre as partições da carga de
+trabalho, e pode não ter solução para um dado algoritmo. No caso do crivo de Erastóstenes, a checagem de um número
+múltiplo de um primo poderia ocorrer antes da marcação desse número após a checagem do número primo ao qual ele é
+múltiplo. Felizmente, podemos extrair subconjuntos da carga que são particionáveis: dado a contagem de todos os números
+primos entre 2 e I e a marcação de seus múltiplos, temos que todos os números de 2 até latexmath:[I^2] são ou números
+primos ou múltiplos de primos já descobertos (e portanto marcados). Com isso, começamos paralelizando o crivo para o
+subconjunto de números entre 3 e 9, e então extendemos para 9 e 81, e então 81 e 6561, e por aí vai.
+
+O segundo problema é uma bronca, podendo existir ou deixar de existir em diferentes sistemas computacionais e tamanhos
+de carga, sendo frequentemente causado por fatores desconsiderados durante a elaboração dos algoritmos. O tempo de
+execução (o tempo real, em que vivemos, não o de CPU) de um algoritmo é, inevitavelmente, função da implementação do
+algoritmo e do sistema que o executa. Evidências dessa afirmação foram vistas nos relatórios anteriores, desde o impacto
+da cache no tempo de execução até a ineficácia do multithreading para cargas pequenas demais. Pelo funcionamento da
+função e os N arbitrários escolhidos no experimento, é difícil supor uma causa ao aumento de tempo além do pequeníssimo
+N arbitrário: o algoritmo aparenta, na maior parte do tempo, estar lendo e escrevendo num vetor de booleanos,
+caracterizando-o como limitado por memória, enquanto que o pequeno valor de N sugere a possibilidade de guardar todo o
+vetor de booleanos na cache L1 (exclusiva de cada core). Ao se paralelizar este código em memória compartilhada, as
+mudanças feitas por outra thread no vetor invalidariam a cache L1 de threads em outros cores, aumentando a latência de
+acesso a memória (basicamente como no false sharing). Para isso, não há muito a se fazer além de aumentar o tamanho do 
+problema — como há dependência entre valores de alguns primos anteriores, seria necessário sincronizar os vetores
+booleanos caso se usasse vetores booleanos privados. Outro problema de performance que podemos corrigir, entretanto, vem
+pelo insight da natureza da carga de trabalho: o tamanho da carga para processamento de um número não é igual para todos
+os números. Podemos ver isso, primeiramente, entre números primos e não primos, onde a marcação de múltiplos dos primos
+leva um tempo proporcional à razão entre o N arbitrário e o número primo, enquanto que o trabalho para um não-primo é
+somente a checagem da marcação. Isso nos leva a dois problemas: a distância entre um número primo e o número primo
+seguinte aumenta conforme a magnitude do número, fazendo com que a divisão da carga em subintervalos regulares de
+latexmath:[)2,N(] resulte em cargas desequilibradas. Nomeadamente, podemos classificar estas fontes de perda de
+desempenho (ou overhead) por comunicação e por desequilíbrio de carga. Para este segundo problema, mais solucionável,
+basta definirmos como dividir a carga no OpenMP: o `parallel for` aceita uma claúsula `schedule` para definição de como
+a carga é dividida entre as threads, assumindo por padrão uma divisão estática (definida em tempo de compilação) em
+blocos de tamanho latexmath:[\frac{T,P}], com T sendo o número de iterações do laço for e P o total de threads da seção.
+Daqui, seja por alguma metaheurística, thumb rule, ou testagem, você arbitra por uma modalidade de agendamento (entre
+`static`, `dynamic` e `guided`, enquanto `auto` e `runtime` servem pra passar essa escolha pra outra etapa) e um tamanho
+de bloco.
+
+Para solucionar estes problemas, duas alternativas foram feitas: uma paralelizando os subconjuntos particionáveis
+através de tasks, que serão abordadas em uma próxima postagem, e uma paralelizando o for do subconjunto. As duas versões
+estão dispostas abaixo:
+
+[source, cpp]
+----
+return_data count_primes_task(unsigned long N, unsigned long num_threads){
+
+    bool* odd_integer_field = (bool*)calloc(N/2 +1, sizeof(bool));
+    unsigned long prime_count = (N >= 2) ? 1 : 0;
+    task_queue pending_values = {(unsigned long) (N/std::log(N))};
+    unsigned long N_in_odd_index = (N-3)/2;
+    unsigned long prio = omp_get_max_task_priority();
+    auto start = utils::mark_time();
+
+    #pragma omp parallel num_threads(num_threads)
+    {
+        #pragma omp single
+        {
+            unsigned long i = 0;
+            unsigned long last_index = 1; //just putting a different value
+            unsigned long progress_threshold = i_val_square_index(i)-1;
+            while (i <= N_in_odd_index){
+                if (i != last_index){
+                    if (!odd_integer_field[i]){
+                        task_info* pending_task = pending_values.push({i, false});
+                        #pragma omp task firstprivate(pending_task) priority(prio)
+                        {
+                            mark_multiples(pending_task->value, N, odd_integer_field);
+                            pending_task->done = true;
+                        }
+                        prio = (prio-1)==0 ? 1 : prio-1;
+                        prime_count++;
+                    }
+                }
+                last_index = i;
+                
+                if (!pending_values.empty()){
+                    if (pending_values.front->done){
+                        progress_threshold = i_val_square_index(pending_values.pop().value)-1;
+                    }
+                }
+                i = i+1 < progress_threshold ? i+1 : progress_threshold;
+            }
+        }
+    }
+    auto end = utils::mark_time();
+    free(odd_integer_field);
+    return {prime_count, utils::calc_time_interval_ms(start, end)};
+}
+
+return_data count_primes_for_dynamic(unsigned long N, unsigned long num_threads){
+
+    bool* odd_integer_field = (bool*)calloc(N/2 +1, sizeof(bool));
+    unsigned long prime_count = (N >= 2) ? 1 : 0;
+    unsigned long N_in_odd_index = (N-3)/2;
+    auto start = utils::mark_time();
+
+    #pragma omp parallel num_threads(num_threads) reduction(+:prime_count)
+    {
+        prime_count = 0;
+        for (unsigned long i = 0; i <= N_in_odd_index;){
+            unsigned long progress_threshold = i_val_square_index(i)-1;
+            progress_threshold = progress_threshold > N_in_odd_index ? N_in_odd_index : progress_threshold;
+            unsigned long partition_size = (progress_threshold-i)/(12*num_threads);
+            partition_size = partition_size == 0 ? 1 : partition_size;
+            #pragma omp for schedule(dynamic,partition_size)
+            for (unsigned long j = i; j <= progress_threshold; j++){
+                if (!odd_integer_field[j]){
+                    mark_multiples(j, N, odd_integer_field);
+                    prime_count++;
+                }
+            }
+            i = progress_threshold + 1;
+        }
+    }
+
+    auto end = utils::mark_time();
+    free(odd_integer_field);
+    return {prime_count, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+==== Comparando as soluções
+
+Idealmente, a paralelização por tasks evitaria a sincronização necessária para cada for dos subconjuntos, bem como
+permitiria a expansão da carga de trabalho enquanto outras tarefas ainda estão sendo concluídas (além de não ter que
+passar tarefas simples demais, como números já marcados, às demais threads). A paralelização por
+for, por sua vez, seria mais simples e evitaria a comunicação do término de tasks feito através da fila `pending_values`
+da implementação por tasks. "Qual seria mais rápida?" é uma questão que, pela simples análise do código, não pode ser
+definida com exatidão: seria necessário considerar fatores externos demais à lógica dos programas para ter uma boa
+confiança ou justificativa do resultado. Teríamos, no melhor, modelado o tempo de execução em função das operações 
+realizadas em cada implementação e variáveis relacionadas ao custo dessas operações na máquina, que, a menos que sejam
+todas operações da mesma natureza, vão depender da máquina em si. Fazendo, então, a comparação no meu computador:
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_wrapper" style="display:flex; flex-direction:column">
+    <div id="plot_times" style="margin:auto;width:85%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+    <div style="margin:auto; width:45%; display:flex; align-items:center">
+        <input type="range" min="2" max ="12" value="2" id="select_plot_data" name="Número de threads" style="flex: 1"/>
+        <label id="num_threads" style="margin-left: 8px"></label>
+    </div>
+</div>
+<script>
+    cache = {}
+    async function fetch_data(path){
+        var data = []
+        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
+        else{
+            const response = await fetch(path)
+            data = await response.json()
+            cache[path] = data
+        }
+        processData(data, {flag: path.split('/')[1].split('_').at(0)})
+    }
+
+    function processData(json_data, extra){
+
+        series = structuredClone(json_data)
+
+        const dash_types = ["solid", "dashdot"]
+        var counter = 0
+        for (const [key, val] of Object.entries(series)){
+            series[key]["mode"] = "lines"
+            series[key]["type"] = "scatter"
+            series[key]["name"] = key
+            series[key]["line"] = {dash:dash_types[counter]}
+            counter = (counter+1)
+        }
+        document.getElementById("plot_times").innerText = ""
+        var traces = Object.values(series)
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: `Timings for ${extra.flag} threads`, subtitle: {text: `5 samples per N, ran on a AMD Ryzen 5 7600, compiled with -Ofast`}},
+                xaxis: {title: {text: "N"}},
+                yaxis: {title: {text: "mean time (ms)"}},
+            }
+        )
+    }
+    const select = document.getElementById("select_plot_data")
+    fetch_data(`resources/${select.value}_rel_5_filtered_data.json`)
+    const label = document.getElementById('num_threads');
+    select.addEventListener("input", (event) => {fetch_data(`resources/${event.target.value}_rel_5_filtered_data.json`); label.textContent =  select.value })
+    label.textContent = select.value
+</script>
+++++
+
+O que poderia ter causado essa tamanha disparidade entre a versão por task e a versão por for? Duas coisas: o overhead
+de tasks em geral (criação, scheduling, e comunicação personalizada do resultado pela fila `pending_values`), que apesar
+de se restringirem aos números primos, não compensam por sua granularidade (o custo adicional da task é significativo
+comparado à carga); e a uma falha na premissa da implementação: ao se considerar que podem ser geradas novas tasks sem
+ter que esperar as demais tasks, pode ser natural pensar que as primeiras tasks a serem criadas seriam as primeiras
+tasks a serem resolvidas. Este não é o caso — o OpenMP não impõe nenhuma prioridade às tasks por padrão, e alternativas
+para dar essa prioridade, como a cláusula `priority`, são de implementação opcional. Com isso, o ponto positivo da
+abordagem com tasks fica dependente das chances de se ter a primeira task da fila resolvida antes que as demais tasks
+acabem. Aqui, torcer para que criem uma especificação definindo uma cláusula para agendamento fifo das tasks para o
+OpenMP e que ela seja implementada pelo seu compilador é o que resta.
+
+Bônus: se você sabe um pouco de C++ e ficou se perguntando o porquê de eu usar um array de booleanos ao invés de um
+`vector<bool>` (ou só ficou se perguntando se não daria para codificar os 8 números para cada byte do array ao invés de
+1:1), são dois fatores: a manipulação de máscaras de bit aumentaria o custo para marcar um número (que até aí poderia
+ser remediável com batches de 8 números por vez), e para poder operar no array sem a necessidade de sincronização — se
+cada byte guardasse múltiplos valores, teríamos o mesmo problema observado em `prime_count` durante a aplicação das
+máscaras.
+
+=== Relacionados
+
+- É complicado falar da história de qualquer coisa (com credibilidade) sem ter fontes e frequentemente faço isso nas
+introduções, mas não faço muita pesquisa ou fact-checking desses fatos: quase tudo é um "vi em algum lugar e tive
+curiosidade sabe-se lá quanto tempo atrás" que lembro e uso. As inspirações (e também parte dos recursos que consigo
+traçar) são coisas como link:https://ieeexplore.ieee.org/document/1447203[o próprio artigo que trouxe a Taxonomia de
+Flynn], link:https://arxiv.org/pdf/2203.02544[o overview histórico deste artigo do Dongarra (ele tem lançado versões diferentes desse artigo tem um tempo, a final se não me engano foi pra ACM, mas esse tem mais conteúdo)] e link:https://www.youtube.com/playlist?list=PLKtxx9TnH76QV56t5_ty1TDWQ2xmv75bs[os vídeos de história dos computadores desse canal (Asianometry)].
+- A versão paralela em Rust link:https://wannesmalfait.github.io/blog/2024/parallel-primes/[desta postagem] foi por onde
+vi primeiro sobre a independência da marcação de um número N em relação aos números que sucedem sua raiz.
+- Como este é o início da parte com programação paralela de fato, alguns materiais como o 
+link:https://rookiehpc.org/openmp/index.html[RookieHPC],
+link:https://www.archer2.ac.uk/training/courses/210000-openmp-self-service/[este curso do supercomputador britânico
+archer2], link:https://hpc-tutorials.llnl.gov/openmp/[o tutorial de OpenMP do LLNL (o lab. da introdução!)] e o próximo
+item da listagem;
+- Os dois livros de programação paralela que mencionei na postagem passada continuam relevantes (são até mais para essa postagem!) link:https://www.casadocodigo.com.br/products/livro-programacao-paralela[O livro feito por brasileiros, em
+português], link:https://www.amazon.com/Introduction-Parallel-Programming-Peter-Pacheco/dp/0128046058[e o livro do
+Pacheco].
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
