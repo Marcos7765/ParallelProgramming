@@ -1,0 +1,239 @@
+== Paralelismo por Threads com OpenMP: Escopo e seções críticas
+=== Introdução
+Seguindo o tema de OpenMP, este é basicamente um exercício: vou descrever aqui uma progressão imaginária no
+desenvolvimento de uma versão paralela de um algortimo para estimar latexmath:[\pi] estocasticamente, começando pela
+versão serial, tentando ingenuamente jogar só um `parallel for` para paralelizar o algoritmo todo (que apesar de ser
+trivialmente paralelizável, não é tão simples quanto isso) e falhando miseravelmente, apontando os erros dessa
+implementação e, por requisito do relatório, implementando uma solução com as seções críticas.
+Penso ter uma falha enorme nessas minhas postagens: elas são ruins para quem não sabe do que estou falando e não são
+relevantes para quem já sabe. Se você especificamente estiver no início do aprendizado com OpenMP e está lendo isso,
+*talvez* esta postagem sirva como um exercício de fixação.
+
+=== Experimento
+
+O código que desejamos paralelizar realiza uma estimativa de latexmath:[\pi] através do seguinte: a razão da área
+de um círculo circunscrito a um quadrado com a área do quadrado em si é latexmath:[\frac{\pi r^2}{l^2} = \frac{\pi r^2}{(2r)^2} = \frac{\pi}{4}], que chamaremos de latexmath:[c]. Se selecionássemos aleatoriamente um ponto deste quadrado, a
+probabilidade de que este ponto estivesse na área do círculo seria proporcional a razão entre essas áreas. Usando a lei
+dos grande números, temos que latexmath:[\lim_{N\to\infty}{\frac{Pts_{circulo}(N)}{Total(N)}} = \frac{\pi}{4}] e podemos
+estimar latexmath:[\pi] amostrando pontos aleatórios contidos no quadrado. O código da implementação serial desse
+aproximador é:
+
+[source, cpp]
+----
+bool unitary_circle_collision(double x, double y){
+    return x*x + y*y <= 1.;
+}
+
+return_data estimate_pi_serial(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution<> sampler(-1.,1.);
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
+
+    for (unsigned long i = 0; i < total_samples; i++){
+        if (unitary_circle_collision(sampler(generator), sampler(generator))){
+            hit_count++;
+        }
+    }
+
+    res = (4*hit_count)/static_cast<double>(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+E para nossa alegria, ele é trivialmente paralelizável: tanto a geração de amostras quanto a checagem de pertencimento
+ao círculo são indepentes. Podemos só colocar a diretiva `pragma omp parallel for` então? Teríamos:
+
+[source, cpp]
+----
+return_data estimate_pi_naive_parallel(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution<> sampler(-1.,1.);
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
+
+    #pragma omp parallel for num_threads(num_threads)
+    for (unsigned long i = 0; i < total_samples; i++){
+        if (unitary_circle_collision(sampler(generator), sampler(generator))){
+            hit_count++;
+        }
+    }
+
+    res = (4*hit_count)/static_cast<double>(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+Por prudência, vamos testar o código (honestamente, nunca entendi como alguém só escreveria o código e o entregaria sem
+executar. é uma confiança alienígena pra mim).
+
+[source, console]
+----
+//referência: o uso do comando é ./estimar_pi <MODO> <NÚMERO DE AMOSTRAS> <NÚMERO DE THREADS> [-printCSV]
+$ ./estimar_pi SERIAL 30000 1
+Result for n = 30000: 3.129333; Total elapsed time: 0.651350 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 1
+Result for n = 30000: 3.134933; Total elapsed time: 0.611574 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 2
+Result for n = 30000: 2.890133; Total elapsed time: 0.452840 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 6
+Result for n = 30000: 0.907333; Total elapsed time: 0.546257 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 12
+Result for n = 30000: 1.773600; Total elapsed time: 3.908814 ms
+----
+
+Apesar de, para um processo estocástico, ser possível de se obter qualquer valor entre 0 e 4 como resultado, esta
+sequência de valores muito errados para execuções com mais de uma thread nos sugere um erro. Poupando toda a criação de
+um conjunto de amostras e análise de significância para negar ou não a hipótese de de fato ter um erro nas amostras,
+vamos voltar atenção ao código.
+
+==== Escopos de variáveis e seções críticas
+Para programas de memória compartilhada em geral, existem dois tipos de variáveis:
+aquelas disponíveis a todos os participantes (que vou chamar de threads daqui em diante), e aquelas privadas, que são
+exclusivas de cada thread. Para OpenMP, por padrão as variáveis que são declaradas antes do início da sessão paralela
+são compartilhadas, enquanto que as declaradas dentro do bloco são privadas (o que não poderia ser diferente, já que a
+declaração ocorre em paralelo). Vamos começar com convencionada boa prática para OpenMP e alterar esse padrão, usando
+a cláusula `default(none)` na diretiva `parallel` para o escopo de compartilhamento das variáveis usadas dentro da seção
+não sejam assumidas. Com isso, precisamos ativamente expressar quais variáveis devem ser compartilhadas e quais devem
+ser privadas, diminuindo as chances de erros inconscientes causados por um escopo inadequado.
+
+Para decisão do que precisa ser compartilhado ou não, precisamos pensar em como o código funciona (ou como queremos que
+ele funcione). Variáveis como o `sampler` e o `total_samples` são necessitadas por todas as threads e não são alteradas
+por nenhuma delas durante a seção, então podem seguradamente ser compartilhadas. `hit_count` e, mais implicitamente, 
+`generator` são variáveis que tem seu valor (ou estado) alterado durante a execução, então temos que considerar mais
+fatores: `hit_count` deve conter todos os acertos contabilizados pelas threads ao fim da execução paralela, necessitando
+de sincronização entre as threads para o cálculo do seu valor. O gerador de números pseudoaleatórios de `generator`
+possui um estado interno que altera após cada geração, podendo, na ocorrência de duas chamadas de geração simultâneas,
+gerar números a partir do mesmo estado, afetando a distribuição de probabilidade amostral (equivalente a fazer uma média
+ponderada com pesos aleatórios entre 1 e o número de threads e menos amostras no código serial) e podendo corromper o
+estado interno do gerador. Como a geração de números aleatórios a partir de múltiplos geradores com diferentes seeds é
+estatisticamente independente entre os geradores, basta que cada thread tenha seu próprio gerador e o inicie sua própria
+seed aleatória. Infelizmente, seja pela função `rand()` da `stdlib` do C ou pelo `std::random_device` do C++, não se
+pode garantir que gerações paralelas sejam independentes nas suas implementações, então é necessário que cada thread
+gere sua seed sequencialmente.
+
+Para realizar estas sincronizações, podemos usar a diretiva `critical` para sinalizar uma seção que só pode ser
+executada por um único thread por vez. Assim, a inevitável geração de seeds sequencial pode ser feita sem mais
+problemas, mas temos uma oportunidade para o `hit_count`: se somente usássemos `critical` na instrução de incremento do
+`hit_count`, estaríamos tornando parte de cada processamento de amostra sequencial, aproximando mais o tempo de execução
+paralelo ao sequencial. Se introduzíssemos uma variável privada para contabilizar os pontos dentro do círculo em cada
+thread e somássemos o valor dessa variável em cada thread ao valor total, teríamos uma paralelização completa das
+iterações às custas de uma operação sequencial adicional para cada thread. Este conceito específico são de variáveis de
+redução, e apesar do OpenMP já disponibilizar uma cláusula para declaração desse tipo de variável (e sua operação de
+redução), vamos fazê-la com essa variável adicional e redução à mão para fins didáticos.
+
+Por último, nem toda variável privada é igual em OpenMP: variáveis especificadas como privadas através da cláusula
+`private` não só perdem o valor que guardavam antes da seção paralela, como não são inicializadas, podendo ter qualquer
+valor não-limpo que houvesse no espaço de memória em que ocupa. Para corrigir isso, ou inicializamos ela novamente
+dentro da seção ou usamos a cláusula `firstprivate` para que ela seja privada e inicializada com o mesmo valor que
+possuía antes da seção. Com todas essas mudanças, temos o código:
+
+[source, cpp]
+----
+return_data estimate_pi_parallel(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    unsigned long local_hit_count = 0;
+    double res;
+    std::uniform_real_distribution<> sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i < total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    local_hit_count++;
+            }
+        }
+        #pragma omp critical
+        {
+            hit_count += local_hit_count;
+        }
+    }
+
+    res = (4*hit_count)/static_cast<double>(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+E só nos resta testar novamente. No final de cada postagem disponibilizo a íntegra dos códigos usados para experimento,
+amostragem e tratamento dos dados. Eles e a própria fonte desse texto em AsciiDoc estão disponíveis link:https://github.com/Marcos7765/ParallelProgramming[neste repositório git].
+No momento em que escrevo ele não possui qualquer readme e não tenho intenção imediata de provê-los, mas creio que dê
+para entender que cada pasta "relatorio_N" se refira a N-ésima postagem. Como não numero elas aqui (apesar de ser por
+ordem de ocorrência, o que deve ficar ruim quando tiverem muitas postagens), consto que esse é o relatório 6. Chega de
+enrolação, vamos para a seção de resultados.
+
+=== Resultados
+[cols="9*"]
+|===
+include::resources/rel_6_ascii_table.text[]
+|===
+
+Com 30 execuções para cada combinação de modo e número de threads (sim aquele número mágico para um intervalo de
+confiança de 95% quando usamos o teorema central do limite pra dizer que isso já é quase a distribuição normal que
+queremos aproximar, mas não lembramos direito o pra quê do número ou só usamos porque os outros usam. Prob. e
+Estatística costuma ser no início do curso e depois de um tempo sem ter que usá-la você esquece mesmo), podemos ver uma
+certa consistência do valor estimado entre as diferentes quantias de threads usadas na versão corrigida, com ainda uma
+melhora bônus no desempenho: ao alterar `hit_count` e o estado interno de `generator` na primeira tentativa de
+paralelização, os mecanismos de coerência de cache, que buscam garantir que todas as caches dos cores do processador
+tenham valores atualizados das variáveis compartilhadas, invalidam as versões das variáveis armazenadas nos níveis mais
+altos da cache (na minha CPU o mecanismo no nível 3, que é compartilhado entre cores, invalidaria o nível 1 e 2,
+exclusivos de cada core), aumentando a latência de acesso a memória nas variáveis.
+
+
+Bônus: você pode ter se questionado "mas o compilador não poderia só guardar `hit_count` em um registrador e não
+acessá-lo da memória?" Em um programa serial (ou um compilador muito xibata/porcaria pra código paralelo), sim. Desde
+antes de qualquer intenção em rodar programas paralelos, tanto C quanto C++ já tem a noção de que espaços na memória
+podem ter seus valores alterados por fora do programa durante a sua execução, e fornecem o qualificador `volatile` para
+sinalizar isso em uma variável para o compilador. Variáveis compartilhadas, sobretudo aquelas que sofrem alterações, são
+consideradas como voláteis para o compilador, evitando otimizações desse tipo.
+
+=== Relacionados
+
+- A 3a postagem daqui mostra um algoritmo que converge muitíssimo mais rápido que esse. Ele também é paralelizável,
+tendo sido implementado em paralelo (com threads!) no link:http://www.numberworld.org/y-cruncher/[y-cruncher] e usado
+para quebrar recordes de casas de precisão calculadas desde o final de 2009.
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====

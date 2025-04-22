@@ -4,7 +4,7 @@ Marcos Irigoyen <mvbirigoyen@gmail.com>
 :toc: left
 :doctype: book
 :stem: latexmath
-:max-width: 70%
+:max-width: 80%
 :figure-caption: Figura
 :reproducible:
 :toc-title: Sumário
@@ -34,3 +34,13 @@ include::relatorio_3/Relatorio.adoc[]
 [[multithreading-e-threads-de-hardware]]
 [desc="Sobre as diferentes formas de multithreading implementadas em hardware e como os programas aproveitam-nas"]
 include::relatorio_4/Relatorio.adoc[]
+
+:imagesdir: relatorio_5/resources
+[[paralelismo-threads-openmp-for]]
+[desc="Início sobre a programação paralela em memória compartilhada com OpenMP, abordando algumas enganos iniciais que podemos cometer"]
+include::relatorio_5/Relatorio.adoc[]
+
+:imagesdir: relatorio_6/resources
+[[paralelismo-threads-openmp-escopos-critical]]
+[desc="Sobre escopos de compartilhamento e seções críticas em OpenMP na forma de um exercício de fixação"]
+include::relatorio_6/Relatorio.adoc[]

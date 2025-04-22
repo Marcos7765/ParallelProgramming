@@ -440,7 +440,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
              .nav-footer{text-align: center; margin-top: auto;}
              .nav-footer > p > a {white-space: nowrap;}</style>
 </head>
-<body id="multithreading-e-threads-de-hardware" class="book toc2 toc-left text-justify">
+<body id="paralelismo-threads-openmp-escopos-critical" class="book toc2 toc-left text-justify">
 <div id="header" style="max-width: 80%;">
 <h1>Programação Paralela</h1>
 <div class="details">
@@ -456,145 +456,328 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a>
 </li>
-<li><a href="multithreading-e-threads-de-hardware.html"><span class="toc-current">Threading por hardware e hyperthreading</span></a>
-<ul class="sectlevel2">
-<li><a href="multithreading-e-threads-de-hardware.html#_introdução_4">Introdução</a>
-</li>
-<li><a href="multithreading-e-threads-de-hardware.html#_experimento_3">Experimento</a>
-</li>
-<li><a href="multithreading-e-threads-de-hardware.html#_resultado_3">Resultado</a>
-</li>
-<li><a href="multithreading-e-threads-de-hardware.html#_relacionados_4">Relacionados</a>
-</li>
-<li><a href="multithreading-e-threads-de-hardware.html#_íntegra_dos_códigos_4">Íntegra dos códigos</a>
-</li>
-</ul>
+<li><a href="multithreading-e-threads-de-hardware.html">Threading por hardware e hyperthreading</a>
 </li>
 <li><a href="paralelismo-threads-openmp-for.html">Paralelismo por Threads com OpenMP</a>
 </li>
-<li><a href="paralelismo-threads-openmp-escopos-critical.html">Paralelismo por Threads com OpenMP: Escopo e seções críticas</a>
+<li><a href="paralelismo-threads-openmp-escopos-critical.html"><span class="toc-current">Paralelismo por Threads com OpenMP: Escopo e seções críticas</span></a>
+<ul class="sectlevel2">
+<li><a href="paralelismo-threads-openmp-escopos-critical.html#_introdução_6">Introdução</a>
+</li>
+<li><a href="paralelismo-threads-openmp-escopos-critical.html#_experimento_4">Experimento</a>
+</li>
+<li><a href="paralelismo-threads-openmp-escopos-critical.html#_resultados_2">Resultados</a>
+</li>
+<li><a href="paralelismo-threads-openmp-escopos-critical.html#_relacionados_6">Relacionados</a>
+</li>
+<li><a href="paralelismo-threads-openmp-escopos-critical.html#_íntegra_dos_códigos_6">Íntegra dos códigos</a>
+</li>
+</ul>
 </li>
 </ul>
 </div>
 </div>
 <div id="content" style="max-width: 80%;">
 <div class="sect1">
-<h2 id="multithreading-e-threads-de-hardware">Threading por hardware e hyperthreading</h2>
+<h2 id="paralelismo-threads-openmp-escopos-critical">Paralelismo por Threads com OpenMP: Escopo e seções críticas</h2>
 <div class="sectionbody">
 <div class="sect2">
-<h3 id="_introdução_4">Introdução</h3>
+<h3 id="_introdução_6">Introdução</h3>
 <div class="paragraph">
-<p>Chegando ao fim desta primeira parte de capítulos e ao (acredito que) último desenvolvimento "serial" em processadores que será abordado aqui (pensou que ia ter branch prediction? Pensou errado, !), temos o hyperthreading, multithreading ou só threading por hardware, a depender das minúcias de implementação. É um tópico difícil de se demonstrar em isolado por experimentos em computadores comuns contemporâneos, como discuto na seção de experimento, então haverá uma certa disparidade entre o que é mostrado na contextualização e/ou lenga-lenga e o que é demonstrado. Por completude do resumo consto que também menciono as diferenças no multithreading de aplicações limitadas por memória e limitadas por operações.</p>
-</div>
-<div class="paragraph">
-<p>De forma geral, multithreading se trata da capacidade de múltiplas (lê-se duas) threads operarem em um único core sem a necessidade de toda a troca de contexto pelo lado de software. Podem ser classificadas de acordo com o critério de substituição, similarmente às threads de software (numa equivalência preemptiva &#8594; fine-grained; não-preemptiva &#8594; coarse-grained), e ainda possuem o caso de multithreading simultâneo, onde as múltiplas threads serviriam para execução de instruções em paralelo para aproveitamento de recursos ociosos, como num pipelining, mas usando instruções de outra thread ao invés do exato mesmo programa, evitando a interdependência de resultados.</p>
-</div>
-<div class="paragraph">
-<p>A grande vantagem das threads de hardware se dão pela rápida troca de contexto: uma thread de hardware é, basicamente, um conjunto de registradores e leitor de instruções adicionais no core, de forma que a troca de contexto possa ser tão direta quanto a mudança de entrada em alguns multiplexadores. Essa agilidade expande as possibilidades para mascaramento de latência ou aproveitamento de tempo ocioso, dado que o overhead da troca de contexto é reduzido. Casos ideais são semelhantes ao de threads de software: programas com períodos de entrada/saída extensos e imascaráveis por períodos de computação, isto é, programas cuja velocidade de execução esteja limitada pela velocidade de acesso à memória. O caso oposto, com programas limitados pela velocidade execução de instruções do processador, depende da implementação de multithreading e a natureza das operações: para um multithreading coarse-grained, não há benefício algum; para uma estratégia fine-grained, como com quantum de tempo, a troca preemptiva de thread em execução implicaria numa perda de desempenho por conta da troca de contexto; e para o caso específico do multithreading simultâneo fica dependente da capacidade de se aproveitar dos recursos ociosos para execução da segunda thread.</p>
-</div>
-<div class="paragraph">
-<p>Se ainda estivéssemos nos processadores Intel Pentium do início do século, quem sabe, poderíamos visualizar melhor este efeito. A manipulação de threads de hardware por software a nível de aplicação é mínima, com no máximo apelos aos escalonadores do sistema operacional para dedicação de threads (freq. referidos por cores lógicos nesse contexto) específicos. Sem isso, a programação por threads é basicamente uma forma de programação paralela, onde se pode assumir cada core lógico da máquina como uma unidade computadora rodando em paralelo às demais. Arquiteturas alternativas como o ARM modificado da Apple para os processadores M&lt;número&gt; ou os cores econômicos de processadores regulares baseados em chiplets destoam como cores de thread único, impedindo as possibilidades de otimizações SMT.</p>
-</div>
-<div class="paragraph">
-<p>Para observar os efeitos do multithreading em programas limitados por memória e programas limitados por operações, bem como outros fenômenos ocorridos durante a amostragem, segue a seção do experimento.</p>
+<p>Seguindo o tema de OpenMP, este é basicamente um exercício: vou descrever aqui uma progressão imaginária no
+desenvolvimento de uma versão paralela de um algortimo para estimar \(\pi\) estocasticamente, começando pela
+versão serial, tentando ingenuamente jogar só um <code>parallel for</code> para paralelizar o algoritmo todo (que apesar de ser
+trivialmente paralelizável, não é tão simples quanto isso) e falhando miseravelmente, apontando os erros dessa
+implementação e, por requisito do relatório, implementando uma solução com as seções críticas.
+Penso ter uma falha enorme nessas minhas postagens: elas são ruins para quem não sabe do que estou falando e não são
+relevantes para quem já sabe. Se você especificamente estiver no início do aprendizado com OpenMP e está lendo isso,
+<strong>talvez</strong> esta postagem sirva como um exercício de fixação.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_experimento_3">Experimento</h3>
+<h3 id="_experimento_4">Experimento</h3>
 <div class="paragraph">
-<p>Foram elaboradas duas funções e variações seriais e por thread delas, tal que as funções base representem os dois casos de limitação de velocidade de um programa. Como o aproveitamento das threads pode ser afetado pelo tamanho do problema, arbitrou-se escalas para o tamanho do problema de cada função para se ter uma melhor noção dos efeitos, com uma normalização no tempo dos dados conforme o tempo médio máximo medido para seu tamanho de problema para facilitar a visualização conjunta. Como teste básico de coerência dos dados (tentativa de termo alternativo a teste de sanidade, aceito sugestões), podemos verificar o praticamente mesmo tempo entre a versão serial e a versão em threads para uma única thread.</p>
+<p>O código que desejamos paralelizar realiza uma estimativa de \(\pi\) através do seguinte: a razão da área
+de um círculo circunscrito a um quadrado com a área do quadrado em si é \(\frac{\pi r^2}{l^2} = \frac{\pi r^2}{(2r)^2} = \frac{\pi}{4}\), que chamaremos de \(c\). Se selecionássemos aleatoriamente um ponto deste quadrado, a
+probabilidade de que este ponto estivesse na área do círculo seria proporcional a razão entre essas áreas. Usando a lei
+dos grande números, temos que \(\lim_{N\to\infty}{\frac{Pts_{circulo}(N)}{Total(N)}} = \frac{\pi}{4}\) e podemos
+estimar \(\pi\) amostrando pontos aleatórios contidos no quadrado. O código da implementação serial desse
+aproximador é:</p>
 </div>
-<div class="paragraph">
-<p>Como o aproveitamento de threads depende também de uma certa independência entre elas para seu funcionamento, os programas tem uma sincronização mínima: indiretamente através da coerência de cache após escrita dos vetores (dependendo do tamanho e alinhamento do vetor na memória) no programa limitado a memória, e na redução dos valores das somas parciais de uma série calculada no programa limitado a operações.</p>
-</div>
-<div class="paragraph">
-<p>A aplicação de um número de threads maior que a disponível pelo sistema leva a criação de threads virtuais, que operam como em threads de software. Nestes primeiros dados elas não foram amostradas execuções dos programas com threads virtuais, limitando-se às 12 físicas do processador.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_resultado_3">Resultado</h3>
-<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
-<div id="plot_wrapper" style="display:flex; flex-direction:column">
-    <div id="plot_times" style="margin:auto;width:85%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
-    <select id="select_plot_data" name="Dados" style="margin:auto;width:40%">
-        <option value="resources/rel4_filtered_data_comp.json" selected> Caso limitado por operações</option>
-        <option value="resources/rel4_filtered_data_memo.json">Caso limitado por memória</option>
-    </select>
-</div>
-<script>
-    cache = {}
-    async function fetch_data(path){
-        var data = []
-        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
-        else{
-            const response = await fetch(path)
-            data = await response.json()
-            cache[path] = data
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">bool unitary_circle_collision(double x, double y){
+    return x*x + y*y &lt;= 1.;
+}
+
+return_data estimate_pi_serial(unsigned long total_samples, unsigned long num_threads){
+
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
+
+    for (unsigned long i = 0; i &lt; total_samples; i++){
+        if (unitary_circle_collision(sampler(generator), sampler(generator))){
+            hit_count++;
         }
-        processData(data, {flag: path.split('_').at(-1).split('.')[0]})
     }
 
-    function processData(json_data, extra){
-
-        var series = {}
-
-        Object.keys(json_data).forEach(key => {
-                series[`${extra.flag.toUpperCase()}_BOUND_SERIAL ${key} scale`] =
-                    json_data[key][`${extra.flag.toUpperCase()}_BOUND_SERIAL`];
-
-
-                series[`${extra.flag.toUpperCase()}_BOUND_THREAD ${key} scale`] =
-                    json_data[key][`${extra.flag.toUpperCase()}_BOUND_THREAD`];
-            }
-        )
-
-        const dash_types = ["solid","longdash", "dot", "dashdot"]
-        const marker_types = ["star","circle", "cross", "x"]
-        var counter = 0
-        for (const [key, val] of Object.entries(series)){
-            series[key]["mode"] = key.includes("SERIAL") ? "lines" : "lines+markers"
-            series[key]["type"] = "scatter"
-            series[key]["name"] = key
-            series[key]["line"] = {dash:dash_types[counter]}
-            series[key]["marker"] = {symbol:marker_types[counter]}
-            counter = (counter+1)%4
-        }
-        document.getElementById("plot_times").innerText = ""
-        var traces = Object.values(series)
-        Plotly.newPlot("plot_times", traces,
-            {
-                title: {text: "Time effects of multithreading in varying problem sizes and thread count", subtitle: {text: `10 samples per NUM_THREAD, ran on a AMD Ryzen 5 7600, compiled with -O3`}},
-                xaxis: {title: {text: "NUM_THREADS"}},
-                yaxis: {title: {text: "mean time, normalized per problem scale"}},
-            }
-        )
-    }
-    const select = document.getElementById("select_plot_data")
-    fetch_data(select.value)
-    select.addEventListener("change", (event) => {fetch_data(event.target.value)})
-</script>
-<div class="paragraph">
-<p>Começando pelo programa limitado por operações, podemos ver uma invariabilidade no tempo relativo das execuções com threads de acordo com as mudanças de tamanho do problema. Este resultado é muito mais uma mostra dos ganhos com paralelismo que com threads em específico, mas não teria essa mesma escala sem o multithreading simultâneo.</p>
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}</code></pre>
+</div>
 </div>
 <div class="paragraph">
-<p>O programa limitado por memória, entretanto, tem um comportamento mais caótico: o tamanho do problema é significante para a eficiência das threads, com o caso particular de, para a menor escala amostrada, o programa ser mais lento conforme se aumenta o número de threads. Especulo que esta seja uma consequência de um tamanho de problema ainda pequeno: as chances de elementos do vetor em diferentes threads pertencerem à mesma linha de cache é maior, podendo causar problemas de compartilhamento falso, ou otimizações SIMD que poderiam ser aplicadas ao loop não conseguem ser aproveitadas pelas duas threads ao mesmo tempo. Ao atingir a maior escala amostrada, a versão por threads ainda apresentou um speedup similar ao dos programas limitados por operações, mas estagnou na marca de 4 threads.</p>
+<p>E para nossa alegria, ele é trivialmente paralelizável: tanto a geração de amostras quanto a checagem de pertencimento
+ao círculo são indepentes. Podemos só colocar a diretiva <code>pragma omp parallel for</code> então? Teríamos:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data estimate_pi_naive_parallel(unsigned long total_samples, unsigned long num_threads){
+
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
+
+    #pragma omp parallel for num_threads(num_threads)
+    for (unsigned long i = 0; i &lt; total_samples; i++){
+        if (unitary_circle_collision(sampler(generator), sampler(generator))){
+            hit_count++;
+        }
+    }
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Por prudência, vamos testar o código (honestamente, nunca entendi como alguém só escreveria o código e o entregaria sem
+executar. é uma confiança alienígena pra mim).</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-console hljs" data-lang="console">//referência: o uso do comando é ./estimar_pi &lt;MODO&gt; &lt;NÚMERO DE AMOSTRAS&gt; &lt;NÚMERO DE THREADS&gt; [-printCSV]
+$ ./estimar_pi SERIAL 30000 1
+Result for n = 30000: 3.129333; Total elapsed time: 0.651350 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 1
+Result for n = 30000: 3.134933; Total elapsed time: 0.611574 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 2
+Result for n = 30000: 2.890133; Total elapsed time: 0.452840 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 6
+Result for n = 30000: 0.907333; Total elapsed time: 0.546257 ms
+$ ./estimar_pi NAIVE_PARALLEL 30000 12
+Result for n = 30000: 1.773600; Total elapsed time: 3.908814 ms</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Apesar de, para um processo estocástico, ser possível de se obter qualquer valor entre 0 e 4 como resultado, esta
+sequência de valores muito errados para execuções com mais de uma thread nos sugere um erro. Poupando toda a criação de
+um conjunto de amostras e análise de significância para negar ou não a hipótese de de fato ter um erro nas amostras,
+vamos voltar atenção ao código.</p>
+</div>
+<div class="sect3">
+<h4 id="_escopos_de_variáveis_e_seções_críticas">Escopos de variáveis e seções críticas</h4>
+<div class="paragraph">
+<p>Para programas de memória compartilhada em geral, existem dois tipos de variáveis:
+aquelas disponíveis a todos os participantes (que vou chamar de threads daqui em diante), e aquelas privadas, que são
+exclusivas de cada thread. Para OpenMP, por padrão as variáveis que são declaradas antes do início da sessão paralela
+são compartilhadas, enquanto que as declaradas dentro do bloco são privadas (o que não poderia ser diferente, já que a
+declaração ocorre em paralelo). Vamos começar com convencionada boa prática para OpenMP e alterar esse padrão, usando
+a cláusula <code>default(none)</code> na diretiva <code>parallel</code> para o escopo de compartilhamento das variáveis usadas dentro da seção
+não sejam assumidas. Com isso, precisamos ativamente expressar quais variáveis devem ser compartilhadas e quais devem
+ser privadas, diminuindo as chances de erros inconscientes causados por um escopo inadequado.</p>
+</div>
+<div class="paragraph">
+<p>Para decisão do que precisa ser compartilhado ou não, precisamos pensar em como o código funciona (ou como queremos que
+ele funcione). Variáveis como o <code>sampler</code> e o <code>total_samples</code> são necessitadas por todas as threads e não são alteradas
+por nenhuma delas durante a seção, então podem seguradamente ser compartilhadas. <code>hit_count</code> e, mais implicitamente,
+<code>generator</code> são variáveis que tem seu valor (ou estado) alterado durante a execução, então temos que considerar mais
+fatores: <code>hit_count</code> deve conter todos os acertos contabilizados pelas threads ao fim da execução paralela, necessitando
+de sincronização entre as threads para o cálculo do seu valor. O gerador de números pseudoaleatórios de <code>generator</code>
+possui um estado interno que altera após cada geração, podendo, na ocorrência de duas chamadas de geração simultâneas,
+gerar números a partir do mesmo estado, afetando a distribuição de probabilidade amostral (equivalente a fazer uma média
+ponderada com pesos aleatórios entre 1 e o número de threads e menos amostras no código serial) e podendo corromper o
+estado interno do gerador. Como a geração de números aleatórios a partir de múltiplos geradores com diferentes seeds é
+estatisticamente independente entre os geradores, basta que cada thread tenha seu próprio gerador e o inicie sua própria
+seed aleatória. Infelizmente, seja pela função <code>rand()</code> da <code>stdlib</code> do C ou pelo <code>std::random_device</code> do C++, não se
+pode garantir que gerações paralelas sejam independentes nas suas implementações, então é necessário que cada thread
+gere sua seed sequencialmente.</p>
+</div>
+<div class="paragraph">
+<p>Para realizar estas sincronizações, podemos usar a diretiva <code>critical</code> para sinalizar uma seção que só pode ser
+executada por um único thread por vez. Assim, a inevitável geração de seeds sequencial pode ser feita sem mais
+problemas, mas temos uma oportunidade para o <code>hit_count</code>: se somente usássemos <code>critical</code> na instrução de incremento do
+<code>hit_count</code>, estaríamos tornando parte de cada processamento de amostra sequencial, aproximando mais o tempo de execução
+paralelo ao sequencial. Se introduzíssemos uma variável privada para contabilizar os pontos dentro do círculo em cada
+thread e somássemos o valor dessa variável em cada thread ao valor total, teríamos uma paralelização completa das
+iterações às custas de uma operação sequencial adicional para cada thread. Este conceito específico são de variáveis de
+redução, e apesar do OpenMP já disponibilizar uma cláusula para declaração desse tipo de variável (e sua operação de
+redução), vamos fazê-la com essa variável adicional e redução à mão para fins didáticos.</p>
+</div>
+<div class="paragraph">
+<p>Por último, nem toda variável privada é igual em OpenMP: variáveis especificadas como privadas através da cláusula
+<code>private</code> não só perdem o valor que guardavam antes da seção paralela, como não são inicializadas, podendo ter qualquer
+valor não-limpo que houvesse no espaço de memória em que ocupa. Para corrigir isso, ou inicializamos ela novamente
+dentro da seção ou usamos a cláusula <code>firstprivate</code> para que ela seja privada e inicializada com o mesmo valor que
+possuía antes da seção. Com todas essas mudanças, temos o código:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data estimate_pi_parallel(unsigned long total_samples, unsigned long num_threads){
+
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    unsigned long local_hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i &lt; total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    local_hit_count++;
+            }
+        }
+        #pragma omp critical
+        {
+            hit_count += local_hit_count;
+        }
+    }
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>E só nos resta testar novamente. No final de cada postagem disponibilizo a íntegra dos códigos usados para experimento,
+amostragem e tratamento dos dados. Eles e a própria fonte desse texto em AsciiDoc estão disponíveis <a href="https://github.com/Marcos7765/ParallelProgramming">neste repositório git</a>.
+No momento em que escrevo ele não possui qualquer readme e não tenho intenção imediata de provê-los, mas creio que dê
+para entender que cada pasta "relatorio_N" se refira a N-ésima postagem. Como não numero elas aqui (apesar de ser por
+ordem de ocorrência, o que deve ficar ruim quando tiverem muitas postagens), consto que esse é o relatório 6. Chega de
+enrolação, vamos para a seção de resultados.</p>
+</div>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_relacionados_4">Relacionados</h3>
+<h3 id="_resultados_2">Resultados</h3>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1111%;">
+<col style="width: 11.1112%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NUM_THREADS</p></td>
+<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">1</p></td>
+<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">3</p></td>
+<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">6</p></td>
+<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">12</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MODE</p></td>
+<td class="tableblock halign-left valign-top" colspan="8"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SERIAL</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.1415</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">180.125</p></td>
+<td class="tableblock halign-left valign-top" colspan="6"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NAIVE_PARALLEL</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.1416</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">224.506</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">2.13496</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">128.104</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.09053</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">110.884</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">0.728185</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">109.446</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">PARALLEL</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.14159</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">188.04</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.14159</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">67.6446</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.1415</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">39.7987</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.14139</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">37.0162</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Com 30 execuções para cada combinação de modo e número de threads (sim aquele número mágico para um intervalo de
+confiança de 95% quando usamos o teorema central do limite pra dizer que isso já é quase a distribuição normal que
+queremos aproximar, mas não lembramos direito o pra quê do número ou só usamos porque os outros usam. Prob. e
+Estatística costuma ser no início do curso e depois de um tempo sem ter que usá-la você esquece mesmo), podemos ver uma
+certa consistência do valor estimado entre as diferentes quantias de threads usadas na versão corrigida, com ainda uma
+melhora bônus no desempenho: ao alterar <code>hit_count</code> e o estado interno de <code>generator</code> na primeira tentativa de
+paralelização, os mecanismos de coerência de cache, que buscam garantir que todas as caches dos cores do processador
+tenham valores atualizados das variáveis compartilhadas, invalidam as versões das variáveis armazenadas nos níveis mais
+altos da cache (na minha CPU o mecanismo no nível 3, que é compartilhado entre cores, invalidaria o nível 1 e 2,
+exclusivos de cada core), aumentando a latência de acesso a memória nas variáveis.</p>
+</div>
+<div class="paragraph">
+<p>Bônus: você pode ter se questionado "mas o compilador não poderia só guardar <code>hit_count</code> em um registrador e não
+acessá-lo da memória?" Em um programa serial (ou um compilador muito xibata/porcaria pra código paralelo), sim. Desde
+antes de qualquer intenção em rodar programas paralelos, tanto C quanto C++ já tem a noção de que espaços na memória
+podem ter seus valores alterados por fora do programa durante a sua execução, e fornecem o qualificador <code>volatile</code> para
+sinalizar isso em uma variável para o compilador. Variáveis compartilhadas, sobretudo aquelas que sofrem alterações, são
+consideradas como voláteis para o compilador, evitando otimizações desse tipo.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_relacionados_6">Relacionados</h3>
 <div class="ulist">
 <ul>
 <li>
-<p>Surpreendentemente <a href="https://community.intel.com/t5/Software-Archive/what-is-the-relation-between-quot-hardware-thread-quot-and-quot/m-p/1016636">esse post num fórum da Intel</a> em 2014 dá um bom insight sobre a diferença entre o multithreading geral e o multithreading simultâneo em específico;</p>
-</li>
-<li>
-<p>Estes dois livros de programação paralela também serviram para recobrar a taxonomia das threads: <a href="https://www.casadocodigo.com.br/products/livro-programacao-paralela">este em português focado em PAD</a> e o <a href="https://www.amazon.com/Introduction-Parallel-Programming-Peter-Pacheco/dp/0128046058">mais geral do Pacheco</a>. Ambos são úteis para programação paralela como um todo e além.</p>
+<p>A 3a postagem daqui mostra um algoritmo que converge muitíssimo mais rápido que esse. Ele também é paralelizável,
+tendo sido implementado em paralelo (com threads!) no <a href="http://www.numberworld.org/y-cruncher/">y-cruncher</a> e usado
+para quebrar recordes de casas de precisão calculadas desde o final de 2009.</p>
 </li>
 </ul>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_íntegra_dos_códigos_4">Íntegra dos códigos</h3>
+<h3 id="_íntegra_dos_códigos_6">Íntegra dos códigos</h3>
 <details>
 <summary class="title">main.cpp</summary>
 <div class="content">
@@ -607,13 +790,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 #include "utils.h"
 #include &lt;cmath&gt;
 #include &lt;omp.h&gt;
-
-#ifndef HELLSIZE
-    //cant go beyond 900 without extending template-depth
-    //(you can either extend it or try to rewrite it with a fold expression)
-    #define HELLSIZE 800
-#endif
-
+#include &lt;random&gt;
 enum PRINT_MODE {
     REGULAR,
     CSV
@@ -624,96 +801,111 @@ std::unordered_map&lt;std::string, PRINT_MODE&gt; print_flags = {
     {"-printCSV", CSV},
 };
 
-typedef utils::_return_data&lt;long double&gt; return_data;
+typedef utils::_return_data&lt;double&gt; return_data;
 
-return_data memory_bound_serial(double* vec1, double* vec2, size_t n, size_t num_threads){
-    long double res = 0;
+bool unitary_circle_collision(double x, double y){
+    return x*x + y*y &lt;= 1.;
+}
+
+return_data estimate_pi_serial(unsigned long total_samples, unsigned long num_threads){
+    
     auto start = utils::mark_time();
-    for (size_t i = 0; i &lt; n; i++){
-        res += vec1[i]+vec2[n-i-1];
-    }
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
 
-return_data memory_bound_threaded(double* vec1, double* vec2, size_t n, size_t num_threads){
-    long double res = 0;
-    auto start = utils::mark_time();
-    #pragma omp parallel for reduction(+: res) num_threads(num_threads)
-    for (size_t i = 0; i &lt; n; i++){
-        res += vec1[i]+vec2[n-i-1];
-    }
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}
-
-template &lt;auto func_ptr&gt;
-return_data wrap_memory_bound(size_t n, size_t num_threads){
-    double* vec1 = (double*) utils::checking_malloc(sizeof(double)*n);
-    double* vec2 = (double*) utils::checking_malloc(sizeof(double)*n);
-    for (size_t i = 0; i &lt; n; i++){
-        vec1[i] = i;
-        vec2[i] = (n-i-1)*2;
-    }
-    return func_ptr(vec1, vec2, n, num_threads);
-}
-
-template &lt;size_t N&gt;
-static constexpr long double tanhell(long double x){
-    return tanhell&lt;N-1&gt;(std::tanh(x));
-}
-
-template &lt;&gt;
-inline constexpr long double tanhell&lt;0&gt;(long double x){
-    return std::tanh(x);
-}
-
-return_data compute_bound_serial(size_t n, size_t){
-    long double res = 0;
-    auto start = utils::mark_time();
-    for (size_t i = 0; i &lt; n; i++){
-        res += tanhell&lt;HELLSIZE&gt;(static_cast&lt;long double&gt;(i));
-    }
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}
-
-return_data compute_bound_threaded(size_t n, size_t num_threads){
-    long double res = 0;
-    auto start = utils::mark_time();
-    #pragma omp parallel for reduction(+: res) num_threads(num_threads)
-        for (size_t i = 0; i &lt; n; i++){
-            res += tanhell&lt;HELLSIZE&gt;(static_cast&lt;long double&gt;(i));
+    for (unsigned long i = 0; i &lt; total_samples; i++){
+        if (unitary_circle_collision(sampler(generator), sampler(generator))){
+            hit_count++;
         }
+    }
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
     auto end = utils::mark_time();
     return {res, utils::calc_time_interval_ms(start, end)};
 }
+
+return_data estimate_pi_naive_parallel(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::random_device rand_dev;
+    std::mt19937 generator(rand_dev());
+
+    #pragma omp parallel for num_threads(num_threads)
+    for (unsigned long i = 0; i &lt; total_samples; i++){
+        if (unitary_circle_collision(sampler(generator), sampler(generator))){
+            hit_count++;
+        }
+    }
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+
+return_data estimate_pi_parallel(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    unsigned long local_hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i &lt; total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    local_hit_count++;
+            }
+        }
+        #pragma omp critical
+        {
+            hit_count += local_hit_count;
+        }
+    }
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+
 
 typedef return_data (*target_func_ptr)(size_t, size_t);
 
 std::unordered_map&lt;std::string, target_func_ptr&gt; modes = {
-    {"COMP_BOUND_SERIAL", compute_bound_serial},
-    {"COMP_BOUND_THREAD", compute_bound_threaded},
-    {"MEMO_BOUND_SERIAL", wrap_memory_bound&lt;memory_bound_serial&gt;},
-    {"MEMO_BOUND_THREAD", wrap_memory_bound&lt;memory_bound_threaded&gt;},
+    {"SERIAL", estimate_pi_serial},
+    {"NAIVE_PARALLEL", estimate_pi_naive_parallel},
+    {"PARALLEL", estimate_pi_parallel},
 };
 
 int main(int argc, char* argv[]){
     PRINT_MODE print_mode = REGULAR;
     if (argc &lt; 4){
-        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;PROBLEM_SIZE&gt; &lt;NUM_THREADS&gt; [-printCSV]\n", argv[0]);
-        printf("&lt;MODE&gt; being either COMP_BOUND_SERIAL, COMP_BOUND_THREAD, MEMO_BOUND_SERIAL or MEMO_BOUND_THREAD\n");
+        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;NUM_SAMPLES&gt; &lt;NUM_THREADS&gt; [-printCSV]\n", argv[0]);
+        printf("&lt;MODE&gt; being either SERIAL, NAIVE_PARALLEL or PARALLEL\n");
         exit(1);
     } else{
         if (argc &gt; 5) {
-            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;PROBLEM_SIZE&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
+            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;NUM_SAMPLES&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
                 argv[5], argv[0]);
             exit(1);
         }
         if (argc == 5){
             auto temp_print = print_flags.find(argv[4]);
             if (temp_print == print_flags.end()){
-                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;PROBLEM_SIZE&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
+                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;NUM_SAMPLES&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
                     argv[4], argv[0]);
                 exit(1);
             }
@@ -723,7 +915,7 @@ int main(int argc, char* argv[]){
 
     auto mode = modes.find(argv[1]);
     if (mode == modes.end()){
-        printf("Invalid mode: %s. Choose between COMP_BOUND_SERIAL, COMP_BOUND_THREAD, MEMO_BOUND_SERIAL or MEMO_BOUND_THREAD\n", argv[1]);
+        printf("Invalid mode: %s. Choose between SERIAL, NAIVE_PARALLEL or PARALLEL\n", argv[1]);
         exit(1);
     }
 
@@ -743,10 +935,10 @@ int main(int argc, char* argv[]){
     switch (print_mode)
     {
     case CSV:
-        printf("%s,%lu, %lu, %f\n", argv[1], params[0], params[1], exec_data.time_ms);
+        printf("%s, %lu, %lu, %f, %f\n", argv[1], params[0], params[1], exec_data.res, exec_data.time_ms);
         break;
     default:
-        printf("Result for n = %lu: %Lf; Total elapsed time: %f ms\n", params[0], exec_data.res, exec_data.time_ms);
+        printf("Result for n = %lu: %f; Total elapsed time: %f ms\n", params[0], exec_data.res, exec_data.time_ms);
         break;
     }
 
@@ -764,25 +956,13 @@ int main(int argc, char* argv[]){
 <pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">EXEC_FILE="./a.out"
 PYTHON_EXEC=python3
 
+THREAD_VALUES="1 3 6 12"
 
-GENERAL_MODES="COMP_BOUND MEMO_BOUND"
-RUN_MODES="SERIAL THREAD"
-START_THREADS=1
-MAX_THREADS=12
+#alternating modes manually
+MODES="SERIAL NAIVE_PARALLEL PARALLEL"
+PROBLEM_SIZE=10000000 #10^8
+NUM_SAMPLES=30
 
-
-PROBLEM_SCALE=1
-MAX_PROBLEM_SCALE=4
-
-comp_scale_problem_size() {
-    PROBLEM_SIZE=$($PYTHON_EXEC -c "print(int(10_000*$1))")
-}
-
-memo_scale_problem_size() {
-    PROBLEM_SIZE=$($PYTHON_EXEC -c "print(int(10_000*(10**$1)))")
-}
-
-NUM_SAMPLES=10
 OUTPUT_FILE=$1
 STATUS=0
 
@@ -791,48 +971,41 @@ then
     echo "Pass the path to an output file, use: $0 &lt;path/to/output&gt;"
     exit
 fi
-echo MODE,PROBLEM_SCALE,NUM_THREADS,TIME_MS &gt; $OUTPUT_FILE
+echo MODE,NUM_SAMPLES,NUM_THREADS,ESTIMATED_PI,TIME_MS &gt; $OUTPUT_FILE
 
-while [ "$PROBLEM_SCALE" -le "$MAX_PROBLEM_SCALE" ]
+
+for MODE in $MODES
 do
-    for MODE in $GENERAL_MODES
+    SAMPLE=1
+    while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
     do
-        if [ "$MODE" = "MEMO_BOUND" ]
+        if [ "$MODE" != "SERIAL" ]
         then
-            memo_scale_problem_size $PROBLEM_SCALE
-        else
-            comp_scale_problem_size $PROBLEM_SCALE
-        fi
-        SAMPLE=1
-        while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
-        do
-            for RMODE in $RUN_MODES
+            for NUM_THREADS in $THREAD_VALUES
             do
-                THREADS=$START_THREADS
-                TARGET_THREADS=1
-                if [ "$RMODE" = "THREAD" ]
+                echo running "$EXEC_FILE $MODE $PROBLEM_SIZE $NUM_THREADS -printCSV &gt;&gt; $OUTPUT_FILE"
+                $EXEC_FILE $MODE $PROBLEM_SIZE $NUM_THREADS -printCSV &gt;&gt; $OUTPUT_FILE
+                STATUS=$?
+                if [ "$STATUS" -ne 0 ]
                 then
-                    TARGET_THREADS=$MAX_THREADS
+                    #intended for when the MAT_SIDE is too big for the program to allocate this much memory
+                    echo Some error occurred, stopping early.
+                    exit
                 fi
-                while [ "$THREADS" -le "$TARGET_THREADS" ]
-                do
-                    #tis one of the few places where such dquotes matching would be okay and allowed
-                    echo running "$EXEC_FILE "$MODE"_"$RMODE" $PROBLEM_SIZE $THREADS -printCSV"
-                    $EXEC_FILE "$MODE"_"$RMODE" $PROBLEM_SIZE $THREADS -printCSV &gt;&gt; $OUTPUT_FILE
-                    STATUS=$?
-                    if [ "$STATUS" -ne 0 ]
-                    then
-                        #intended for when the MAT_SIDE is too big for the program to allocate this much memory
-                        echo Some error occurred, stopping early.
-                        exit
-                    fi
-                    THREADS=$(($THREADS+1))
-                done
             done
-            SAMPLE=$(($SAMPLE+1))
-        done
+        else
+            echo running "$EXEC_FILE $MODE $PROBLEM_SIZE 1 -printCSV &gt;&gt; $OUTPUT_FILE"
+            $EXEC_FILE $MODE $PROBLEM_SIZE 1 -printCSV &gt;&gt; $OUTPUT_FILE
+            STATUS=$?
+            if [ "$STATUS" -ne 0 ]
+            then
+                #intended for when the MAT_SIDE is too big for the program to allocate this much memory
+                echo Some error occurred, stopping early.
+                exit
+            fi
+        fi
+        SAMPLE=$(($SAMPLE+1))
     done
-    PROBLEM_SCALE=$(($PROBLEM_SCALE+1))
 done</code></pre>
 </div>
 </div>
@@ -844,94 +1017,52 @@ done</code></pre>
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-python hljs" data-lang="python">import pandas as pd
-import matplotlib.pyplot as plt
 import sys
 
-if len(sys.argv) &lt; 4: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;json_output_filepath&gt;"); exit(0)
-if len(sys.argv) &gt; 4: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;json_output_filepath&gt;"); exit(0)
+if len(sys.argv) &lt; 3: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;output_path&gt;"); exit(0)
+if len(sys.argv) &gt; 3: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;output_path&gt;"); exit(0)
 
 data = pd.read_csv(sys.argv[1])
 
-data = data.groupby(['MODE', 'NUM_THREADS', 'PROBLEM_SCALE'], as_index=False).mean()
+data = data.groupby(['MODE', 'NUM_THREADS']).aggregate(
+    MEAN_PI_EST=('ESTIMATED_PI','mean'),
+    MEAN_TIME_MS=('TIME_MS', 'mean')
+).unstack('NUM_THREADS')
 
-size = (16,9)
-fig, ax = plt.subplots(figsize=size)
+data.columns = data.columns.swaplevel(0,1)
+data = data.sort_index(axis=1)#.reset_index(level='')
+data = data.loc[["SERIAL", "NAIVE_PARALLEL", "PARALLEL"]]
 
-comp_bound_data =  data[data['MODE'].str.startswith("COMP_BOUND")]
-memo_bound_data =  data[data['MODE'].str.startswith("MEMO_BOUND")]
+data.to_csv(sys.argv[2], float_format="%.6g")
 
-thread_vals = pd.unique(data['NUM_THREADS'])
-
-lines = []
-
-def make_plot(comp_bound_data):
-
-    comp_plots_data = {pscale:{} for pscale in pd.unique(comp_bound_data['PROBLEM_SCALE'])}
-
-    for pscale in pd.unique(comp_bound_data['PROBLEM_SCALE']):
-        filtered = comp_bound_data[comp_bound_data['PROBLEM_SCALE']==pscale]
-        comp_plots_data[pscale]["div_scale"] = filtered['TIME_MS'].max()
-        for mode in pd.unique(filtered['MODE']):
-            filtered_2 = filtered[filtered['MODE']==mode]
-            if mode.endswith("SERIAL"):
-                comp_plots_data[pscale][mode] = {"x": [i for i in thread_vals], "y": list(filtered_2['TIME_MS']/
-                    comp_plots_data[pscale]["div_scale"])*len(thread_vals)}
-            else:
-                comp_plots_data[pscale][mode] = {"x": [x for x in filtered_2['NUM_THREADS']],
-                    "y": [x for x in filtered_2['TIME_MS']/comp_plots_data[pscale]["div_scale"]]}
-
-    colorrange1 = plt.get_cmap('tab10', len(pd.unique(comp_bound_data['PROBLEM_SCALE'])))
-    dashstyles = ["-", ":", "-.", "--"]
-    markers = ['*', 'o', '+', 'x']
-
-    counter = 0
-    for pscale in comp_plots_data:
-        for mode in comp_plots_data[pscale]:
-            if mode == "div_scale": continue
-            if mode.endswith("SERIAL"):
-                line, = ax.plot(comp_plots_data[pscale][mode]["x"], 
-                    comp_plots_data[pscale][mode]["y"], label=f"{mode} {pscale} scale", color=colorrange1(counter), 
-                    linestyle=dashstyles[counter%4])
-            else:
-                line, = ax.plot(comp_plots_data[pscale][mode]["x"], 
-                    comp_plots_data[pscale][mode]["y"], label=f"{mode} {pscale} scale", marker=markers[counter%4],
-                    linestyle=dashstyles[counter%4])
-            lines.append(line)
-        counter +=1
-    
-    return pd.DataFrame(comp_plots_data)
-
-selected_data = None
-match input("Select: COMP or MEMO. "):
-    case "COMP":
-        selected_data = comp_bound_data
-    case "MEMO":
-        selected_data = memo_bound_data
-    case _:
-        print("Invalid selection.")
-        exit(1)
-
-make_plot(selected_data).to_json(sys.argv[3])
-
-ax.set_xlabel('NUM_THREADS')
-ax.set_ylabel('Normalized per problem scale time')
-ax.set_title("10 samples per NUM_THREAD, ran on a AMD Ryzen 5 7600, compiled with -O3")
-fig.suptitle("TIme")
-
-linear = True
-#linear = False
-if linear:
-    ax.set_xlim(left=data['NUM_THREADS'].min(), right=data['NUM_THREADS'].max())
-    ax.set_xticks([i for i in range(1,13)])
-else:
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-
-
-lines = sorted(lines, key= lambda a: a.get_label())
-ax.legend(lines, [line.get_label() for line in lines])
-plt.tight_layout()
-fig.savefig(sys.argv[2])</code></pre>
+#can't differentiate indexes to merge, maybe adding a index list of which lines to merge?
+def csv_line_to_asciidoc(_line, sep=",", merge=True):
+    line = _line
+    if _line.endswith("\n"): line = _line[:-1]
+    skip_tuple_token = (None, None)
+    new_line = []
+    ipair_line = list(enumerate(line.split(sep)))
+    for i, word in ipair_line:
+        if i is None:
+            continue
+        rep_count = 0
+        if merge or word == '':
+            for j, next_word in ipair_line[i+1:]:
+                if next_word != word:
+                    if next_word != '':
+                        break
+                rep_count += 1
+                ipair_line[j] = skip_tuple_token
+        if rep_count == 0:
+            new_line.append(f"|{word}\n")
+        else:
+            new_line.append(f"{rep_count+1}+|{word}\n")
+    new_line[-1] = new_line[-1][:-1] + "  \n" 
+    return "".join(new_line)
+        
+merge_indexes = [0]
+for i,line in enumerate(open(f"{sys.argv[2]}").readlines()):
+    print(csv_line_to_asciidoc(line, merge=i in merge_indexes))</code></pre>
 </div>
 </div>
 </div>
@@ -940,7 +1071,7 @@ fig.savefig(sys.argv[2])</code></pre>
 </div>
 </div>
 <div class="paragraph nav-footer">
-<p>← Previous: <a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a> | ↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="paralelismo-threads-openmp-for.html">Paralelismo por Threads com OpenMP</a> →</p>
+<p>← Previous: <a href="paralelismo-threads-openmp-for.html">Paralelismo por Threads com OpenMP</a> | ↑ Up: <a href="index.html">Programação Paralela</a></p>
 </div>
 </div>
 <div id="footer" style="max-width: 80%;">
