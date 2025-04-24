@@ -1,7 +1,7 @@
 == Paralelismo por Threads com OpenMP: Escopo e seções críticas
 === Introdução
 Seguindo o tema de OpenMP, este é basicamente um exercício: vou descrever aqui uma progressão imaginária no
-desenvolvimento de uma versão paralela de um algortimo para estimar latexmath:[\pi] estocasticamente, começando pela
+desenvolvimento de uma versão paralela de um algoritmo para estimar latexmath:[\pi] estocasticamente, começando pela
 versão serial, tentando ingenuamente jogar só um `parallel for` para paralelizar o algoritmo todo (que apesar de ser
 trivialmente paralelizável, não é tão simples quanto isso) e falhando miseravelmente, apontando os erros dessa
 implementação e, por requisito do relatório, implementando uma solução com as seções críticas.

@@ -44,3 +44,8 @@ include::relatorio_5/Relatorio.adoc[]
 [[paralelismo-threads-openmp-escopos-critical]]
 [desc="Sobre escopos de compartilhamento e seções críticas em OpenMP na forma de um exercício de fixação"]
 include::relatorio_6/Relatorio.adoc[]
+
+:imagesdir: relatorio_7/resources
+[[paralelismo-threads-openmp-tasks]]
+[desc="Sobre paralelismo por threads em OpenMP com um tico sobre redução de granularidade e estimativa de custo"]
+include::relatorio_7/Relatorio.adoc[]

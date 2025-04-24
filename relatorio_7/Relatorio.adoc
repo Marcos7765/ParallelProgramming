@@ -1,0 +1,355 @@
+== Paralelismo por Threads com OpenMP: Tasks
+=== Introdução
+Com um `for parallel` e criatividade você consegue ir longe e rápido em OpenMP. Com tasks você consegue ir mais longe
+ainda — mas nem sempre na velocidade que você deseja. Se você viu a primeira postagem desse assunto (Paralelismo por
+Threads com OpenMP), você viu duas implementações paralelas do Crivo de Erastóstenes com resultados muito distintos: uma versão baseada em laços paralelos que, para um N grande o bastante, era mais rápida que a versão serial, e uma versão em
+tasks que não só piorava conforme aumentava o número de threads, como que era mais lenta que a versão serial para
+qualquer tamanho do problema. Abordaremos aqui como paralelizar um programa por tasks com OpenMP usando uma aplicação
+hipótetica (requisito), percorremos recursivamente todo o conteúdo de um diretório (assumindo apenas arquivos e pastas,
+nada de link simbólico ou bagunças do tipo) e operando sobre seus arquivos, partindo de uma versão serial para uma
+primeira versão baseada em tasks e por fim uma versão otimizada dela, fazendo uma análise temporal com um tempo
+artificial de operação e uma análise mais ágil contabilizando custos.
+
+=== Experimento
+
+A atividade requisito pede que acessemos uma lista encadeada com arquivos fantasia e operássemos em paralelo com eles
+usando tasks: como não conseguiríamos saber o tamanho da task sem iterar pelos arquivos, teríamos que criar tasks para
+paralelizar o processamento enquanto fazemos o fetching dos arquivos. Para dar mais veracidade, usei o `dirent.h` do
+libc para percorrer uma árvore de diretórios real (real, mas feita com shell script exatamente pra esse teste). Sua
+versão serial segue:
+
+[source, cpp]
+----
+unsigned int file_operation(std::string name, unsigned long level, unsigned long file_delay){
+    print_mode==REGULAR && printf("%s [file] [T%d]\n",(std::string(level, '\t')+name).c_str(), omp_get_thread_num());
+    dummy_file_operation_overhead(file_delay);
+    alt_cost += DEFAULT_FILE_COST;
+    return 1;
+}
+
+unsigned int folder_operation_serial(DIR* folder_entry, std::string path, std::string name, unsigned long level, unsigned long file_delay){
+    print_mode==REGULAR && printf("%s [folder] [T%d]\n",(std::string(level, '\t')+name).c_str(), omp_get_thread_num());
+    alt_cost += DEFAULT_FOLDER_COST;
+    return 1 + tree_recursive_serial(folder_entry, path+"/", level+1);
+}
+
+unsigned long tree_recursive_serial(DIR* dir_ptr, std::string prefix, unsigned int level, unsigned int file_delay){
+    
+    unsigned long res = 0;
+    for (dirent64* entry = readdir64(dir_ptr); entry != NULL; entry = readdir64(dir_ptr)){
+        
+        const std::string name = entry->d_name;
+        if (name == "." || name == ".."){continue;}
+        const auto path = prefix + name;
+
+        DIR* sub_entry = handled_opendir(path.c_str());
+        if (sub_entry == NULL){
+            res += file_operation(name, level, file_delay);
+        } else {
+            res += folder_operation_serial(sub_entry, path, name, level, file_delay);
+        }
+    }
+    closedir(dir_ptr);
+    return res;
+}
+
+return_data tree_serial(const char* root_path, unsigned long num_threads){    
+    auto start = utils::mark_time();
+    DIR *base = handled_opendir(root_path);
+    unsigned long total_files = tree_recursive_serial(base, root_path);
+    auto end = utils::mark_time();
+    if constexpr (alternative_cost_mode){
+        return {alt_cost, utils::calc_time_interval_ms(start, end)};
+    } else {
+        return {total_files, utils::calc_time_interval_ms(start, end)};
+    }
+}
+----
+OBS.: Vale notar que em ambos os casos ainda escapamos de um fator importantíssimo no tempo de execução de problemas
+desse tipo — a latência de acesso. Se você está, por exemplo, requisitando informações de um servidor remoto, você
+provavelmente já estará ganhando muito na redução de tempo de execução e nem tenha como melhorar mais, por ser
+basicamente um programa "memory-bounded". Aqui você perceberá um ligeiro erro meu envolvendo isso, mas como ninguém lê
+eu deixo como exercício ao leitor encontrá-lo.
+
+Olhando seu funcionamento, é simples: abrimos um diretório e começamos a iterar sob seu conteúdo; se o conteúdo for
+arquivo, processamos o arquivo, se o conteúdo for uma pasta, iteramos pelo conteúdo da pasta dessa mesma forma. Contamos
+quantas entradas tem no total como uma verificação simples e incompleta do funcionamento (também é printado na stdout
+de um jeito parecido ao `tree` do... MS-DOS?) e outras contagens de custo que servirão pra depois. Para paralelizar este algoritmo, podemos criar tasks para cada entrada do diretório durante sua iteração, permitindo que aproveitemos parte
+dos recursos enquanto esperamos a próxima entrada. Se você se lembra do último programa com tasks que abordamos, isso
+não deu certo: o overhead de criação da task não compensava o tempo de execução do programa. Para amenizar isso, então,
+poderíamos criar tasks somente para os subdiretórios, onde a recursão para iterar neles pode ser muito custosa. Uma
+primeira versão paralela assim, então, seria:
+
+[source, cpp]
+----
+unsigned int folder_operation_task(DIR* folder_entry, std::string path, std::string name, unsigned long level, unsigned long file_delay){
+    print_mode==REGULAR && printf("%s [folder] [T%d]\n",(std::string(level, '\t')+name).c_str(), omp_get_thread_num());
+    #pragma omp task
+    {           
+                file_count += tree_recursive_task(folder_entry, path+"/", level+1);
+    }
+    alt_cost += DEFAULT_FOLDER_COST;
+    return 1;
+}
+
+unsigned long tree_recursive_task(DIR* dir_ptr, std::string prefix, unsigned int level,
+    unsigned int file_delay, unsigned int file_task_block){
+
+    unsigned long res = 0;    
+    for (dirent64* entry = readdir64(dir_ptr); entry != NULL; entry = readdir64(dir_ptr)){
+        
+        const std::string name = entry->d_name;
+        if (name == "." || name == ".."){continue;}
+        const auto path = prefix + name;
+        
+        DIR* sub_entry = handled_opendir(path.c_str());
+        if (sub_entry == NULL){
+            res += file_operation(name, level, file_delay);
+        } else {
+            res += folder_operation_task(sub_entry, path, name, level, file_delay);
+        }
+    }
+    closedir(dir_ptr);
+    return res;
+}
+
+template <auto recursive_func> //especializado para recursive_func = tree_recursive_task
+return_data tree_parallel(const char* root_path, unsigned long num_threads){    
+    auto start = utils::mark_time();
+    DIR *base = handled_opendir(root_path);
+    unsigned long total_files = 0;
+    unsigned long total_alt_cost = 0;
+    #pragma omp parallel num_threads(num_threads) reduction(+:total_files)
+    {
+        #pragma omp single
+        {
+            file_count += recursive_func(base, root_path, 0, DEFAULT_FILE_OPERATION_OVERHEAD, DEFAULT_FILE_BLOCK_SIZE);
+        }
+        #pragma omp barrier
+        total_files = file_count;
+        #pragma omp critical
+        {
+            total_alt_cost = total_alt_cost > alt_cost ? total_alt_cost : alt_cost;
+        }
+        #pragma omp barrier
+        alt_cost = total_alt_cost;
+    }
+    
+    auto end = utils::mark_time();
+    if constexpr (alternative_cost_mode){
+        return {total_alt_cost, utils::calc_time_interval_ms(start, end)};
+    } else {
+        return {total_files, utils::calc_time_interval_ms(start, end)};
+    }
+}
+----
+
+E por aí já poderíamos parar, mas ainda tem potencial dentro disso. A ordem de acesso às entradas de um diretório não
+tem ordem definida, então você pode iterar por todos os arquivos de um diretório para, no final, chegar a um 
+subdiretórios — efetivamente pior que uma versão serial. Como não há latência significante para o acesso da próxima
+entrada, podemos fazer o seguinte: iteramos por todas as entradas do diretório, guardando temporiariamente as entradas
+que são arquivos em um buffer e criando imediatamente as tasks para os diretórios. Com isso, não só resolvemos o
+problema da ordem de acesso, mas obtemos algo interessantíssimo: o tamanho da carga. Se estivéssemos em uma seção
+paralela comum, poderíamos jogar uma diretiva `for` e sair comemorando, mas tasks, sendo executadas por uma única
+thread, são efetivamente seriais para isso, com o efeito colateral de, caso use uma diretiva ´parallel for´, vá criar 
+threads virtuais para realizar o trabalho (que aí já são outros fatores e mais trabalho para tradeoff, mas em geral se
+deseja evitar). Para contornar isso, vamos ter que usar tasks para paralelizar, mas vamos usar algo que já foi visto na
+segunda postagem dessa série (série como esse Programação Paralela como um todo): execuções em bloco. Repartimos a carga
+em blocos de até um certo tamanho (aqui determinado arbitrariamente, mas poderia ser calculado) e criamos tasks para
+operar nesses blocos, diminuindo a granularidade das tasks em troca de menos overheads de criação de tasks. O código com
+essas otimizações fica com as seguintes alterações:
+
+[source, cpp]
+----
+unsigned int folder_operation_task_optmized(DIR* folder_entry, std::string path, std::string name, unsigned long level, unsigned long file_delay){
+    print_mode==REGULAR && printf("%s [folder] [T%d]\n",(std::string(level, '\t')+name).c_str(), omp_get_thread_num());
+    #pragma omp task
+    {
+                file_count += tree_recursive_task_optimized(folder_entry, path+"/", level+1);
+    }
+    alt_cost += DEFAULT_FOLDER_COST;
+    return 1;
+}
+
+unsigned long tree_recursive_task_optimized(DIR* dir_ptr, std::string prefix,
+    unsigned int level, unsigned int file_delay, unsigned int file_task_block){
+    
+    minimal_queue<std::string> file_queue(DEFAULT_STARTING_QUEUE_SIZE);
+    unsigned long res = 0;
+    for (dirent64* entry = readdir64(dir_ptr); entry != NULL; entry = readdir64(dir_ptr)){
+        
+        const std::string name = entry->d_name;
+        if (name == "." || name == ".."){continue;}
+        auto path = prefix + name;
+        DIR* sub_entry = handled_opendir(path.c_str());
+        
+        if (sub_entry == NULL){
+            file_queue.push(name);
+        } else {
+            res += folder_operation_task_optmized(sub_entry, path, name, level, file_delay);
+        }
+    }
+    closedir(dir_ptr);
+
+    while (file_queue.size > 0){
+        std::string* names = new std::string[file_task_block];
+        unsigned long block_size = file_queue.popN(file_task_block, names);
+        #pragma omp task firstprivate(names, block_size, level)
+        {
+            for (int i = 0; i < block_size; i++){
+                file_count += file_operation(names[i], level, file_delay);
+            }
+            delete[] names;
+        }
+    }
+
+    return res;
+}
+
+template <auto recursive_func> //especialização de recursive_func para tree_recursive_task_optimized
+return_data tree_parallel(const char* root_path, unsigned long num_threads);
+----
+
+E provavelmente você sentiu falta de uma comparação entre a primeira versão com task e a versão serial para justificar
+a dedicação de mais esforços para otimizar. Isso foi uma falha minha: só preparei os gráficos com os três juntos, então
+apelei para uma noção não necessariamente real de "ainda dá pra melhorar, dá pra ver que dá". O certo é medir antes.
+De qualquer forma, ambas as versões são mais lentas que a versão serial se você só quiser contar entradas ou printar uma
+árvore: são tarefas baratas demais para que valha a pena criar uma thread. Por conta disso, você talvez tenha reparado
+a função `dummy_file_operation_overhead`: ela serve para simular uma operação cara computacionalmente, esperando os
+tanto segundos que lhe forem passados como argumento. Aplicações semelhantes a essa que possam aproveitar de paralelismo
+são custosas, como na compilação de uma base de códigos: a compilação inicial de cada arquivo em objetos pode ser feita
+assim, como você pode ter feito ao executar um `make -j`. Enfim, seguem os resultados com tempo artificial:
+
+[%always]
+<<<
+
+++++
+<div id="plot_wrapper1" style="display:flex; flex-direction:column">
+    <div id="plot_times1" style="margin:auto;width:55%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+</div>
+++++
+
+Como visto, é possível de se aproveitar do paralelismo por tasks para aplicações do tipo, mas é necessário análise da
+carga e fatores adjacentes, como latência de acesso. Uma forma mais prática de executar esses testes é abandonando esse
+tempo artificial: ao invés de medir o tempo, posso definir uma variável global (global de escopo normal,privada no
+escopo de compartilhamento) de custo e atribua valores para diferentes tipos de operações. Ao realizá-las, incremento a
+variável custo pelos seus valores e, no final da seção paralela, mantenho o maior valor dentre as threads. Efetivamente,
+obtenho uma combinação de operações executadas e custos de natureza parecida com o tempo de execução, onde o quão mais
+fidedignos forem os valores atribuídos às operações ao seu custo computacional, mais próximo essa variável custo é do
+tempo de execução. Os resultados de cima usaram um custo de 1 para cada operação em arquivo e 0 nas demais operações,
+semelhante ao tempo artificial de 1s em cada operação em arquivo. Como esse custo artificial é muito maior que quaisquer
+outros custos, vemos (passando o mouse em cima dos pontos no gráfico) que eles são praticamente iguais. Usando, então,
+esse truque para medir o tempo de um problema maior (e com mais amostras), temos:
+
+[%always]
+<<<
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_wrapper2" style="display:flex; flex-direction:column">
+    <div id="plot_times2" style="margin:auto;width:55%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+</div>
+<script>
+    cache = {}
+    async function fetch_data(path, target_element_id, extra){
+        var data = []
+        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
+        else{
+            const response = await fetch(path)
+            data = await response.json()
+            cache[path] = data
+        }
+        processData(data, target_element_id, extra)
+    }
+
+    function processData(json_data, target_element_id, extra){
+
+        series = structuredClone(json_data)
+
+        const dash_types = ["solid", "dashdot", "dash"]
+        var counter = 0
+        for (const [key, val] of Object.entries(series)){
+            series[key]["mode"] = "lines+markers"
+            series[key]["type"] = "scatter"
+            series[key]["name"] = key
+            series[key]["line"] = {dash:dash_types[counter]}
+            series[key]["text"] = series[key]["extra"].map(x => x.toString())
+            counter = (counter+1)
+        }
+        document.getElementById(target_element_id).innerText = ""
+        var traces = Object.values(series)
+        Plotly.newPlot(target_element_id, traces,
+            {
+                title: {text: extra.title, subtitle: {text: `${extra.samples} samples per thread count, ran on a AMD Ryzen 5 7600, compiled with -O2${extra.subtitle_extra}`}},
+                xaxis: {title: {text: "Thread count"}},
+                yaxis: {title: {text: extra.ylabel}},
+            }
+        )
+    }
+
+    fetch_data(`resources/rel_7_timing_filtered_data.json`, "plot_times1",
+    {title:"Pseudo-timing comparison — 50 entries", samples:5, ylabel:"Mean time (ms)", subtitle_extra:""}
+    )
+    fetch_data(`resources/rel_7_costs_filtered_data.json`, "plot_times2",
+    {title:"Arbitrary comparison — 255 entries", samples:30, ylabel:"Mean cost", subtitle_extra:", files cost 1, directories cost 0"}
+    )
+</script>
+++++
+
+Podemos ver o quão melhoraria o speedup usando os mesmos parâmetros do teste anterior. Como estou animado com
+exercícios, considere os seguintes: uma versão baseada em laços paralelos (que agora sabemos que é possível); estimar
+pesos para diferentes operações, como criação de task, operação em diretório, buffering de entradas, etc.; e refatorar
+o script `make_random_dirtree.sh` para aceitar árvores com mais de 255 entradas (/s).
+
+=== Relacionados
+
+- link:https://medium.com/@codingcamel/learning-in-public-coding-ls-in-c-part-1-ab70eda85551[Esta postagem] me guiou para o `dirent.h`, de onde eu segui link:https://pubs.opengroup.org/onlinepubs/7908799/xsh/dirent.h.html[esta documentação] para implementar o acesso aos arquivos
+(de forma compatível com o POSIX.1!).
+- link:https://youtu.be/u0qqwTGjHmQ?list=PLoOmvuyo5UAfFSqAhftxmS2nX1ZTa7SCU[Esta videoaula] do Hasso Plattner Institut
+dá uma boa visão geral e contextualização do assunto, uma pena não terem mais dos temas que abordo.
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.make_random_dirtree.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::make_random_dirtree.sh[]
+----
+====
+
+.run_test_costs.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_test_costs.sh[]
+----
+====
+
+.run_test_timing.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_test_timing.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
