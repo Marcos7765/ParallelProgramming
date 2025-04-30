@@ -100,10 +100,9 @@ Para programas de memória compartilhada em geral, existem dois tipos de variáv
 aquelas disponíveis a todos os participantes (que vou chamar de threads daqui em diante), e aquelas privadas, que são
 exclusivas de cada thread. Para OpenMP, por padrão as variáveis que são declaradas antes do início da sessão paralela
 são compartilhadas, enquanto que as declaradas dentro do bloco são privadas (o que não poderia ser diferente, já que a
-declaração ocorre em paralelo). Vamos começar com convencionada boa prática para OpenMP e alterar esse padrão, usando
-a cláusula `default(none)` na diretiva `parallel` para o escopo de compartilhamento das variáveis usadas dentro da seção
-não sejam assumidas. Com isso, precisamos ativamente expressar quais variáveis devem ser compartilhadas e quais devem
-ser privadas, diminuindo as chances de erros inconscientes causados por um escopo inadequado.
+declaração ocorre em paralelo). Vamos começar com uma convencionada boa prática para OpenMP e alterar esse padrão,
+usando a cláusula `default(none)` na diretiva `parallel` para o escopo de compartilhamento das variáveis usadas dentro
+da seção não sejam assumidas. Com isso, precisamos ativamente expressar quais variáveis devem ser compartilhadas e quais devem ser privadas, diminuindo as chances de erros inconscientes causados por um escopo inadequado.
 
 Para decisão do que precisa ser compartilhado ou não, precisamos pensar em como o código funciona (ou como queremos que
 ele funcione). Variáveis como o `sampler` e o `total_samples` são necessitadas por todas as threads e não são alteradas
@@ -193,8 +192,10 @@ certa consistência do valor estimado entre as diferentes quantias de threads us
 melhora bônus no desempenho: ao alterar `hit_count` e o estado interno de `generator` na primeira tentativa de
 paralelização, os mecanismos de coerência de cache, que buscam garantir que todas as caches dos cores do processador
 tenham valores atualizados das variáveis compartilhadas, invalidam as versões das variáveis armazenadas nos níveis mais
-altos da cache (na minha CPU o mecanismo no nível 3, que é compartilhado entre cores, invalidaria o nível 1 e 2,
-exclusivos de cada core), aumentando a latência de acesso a memória nas variáveis.
+altos da cache (na minha CPU o mecanismo no nível 3, compartilhado entre cores, seria corrigido quando a escrita do dado
+chegasse nele, enquanto que as linhas com a variável na cache de nível 1 e 2 seriam invalidadas imediatamente, exigindo
+um fetching na memória que, provavelmente, será um hit no cache de nível 3)*, aumentando a latência de acesso a memória
+nas variáveis.
 
 
 Bônus: você pode ter se questionado "mas o compilador não poderia só guardar `hit_count` em um registrador e não
@@ -203,6 +204,8 @@ antes de qualquer intenção em rodar programas paralelos, tanto C quanto C++ j�
 podem ter seus valores alterados por fora do programa durante a sua execução, e fornecem o qualificador `volatile` para
 sinalizar isso em uma variável para o compilador. Variáveis compartilhadas, sobretudo aquelas que sofrem alterações, são
 consideradas como voláteis para o compilador, evitando otimizações desse tipo.
+
+*Corrigido, detalhes em "Extra: detalhando coerência de cache, falso compartilhamento e thread-safety".
 
 === Relacionados
 

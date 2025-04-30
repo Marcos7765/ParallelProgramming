@@ -4,8 +4,8 @@ Intercedendo os papos sobre otimização para hardware, quero (no sentido que n�
 nota a toa) falar um pouco sobre uma das principais razões a quais essa jornada de otimização de programas é feita:
 precisão. Parafraseando a introdução da primeira postagem, que é bem conveniente pra esse assunto:
 
-[quote, Eu mesmo, em <<Gargalo de Von Neumann e a Cache>>]
-----
+[quote, Eu mesmo, em Gargalo de Von Neumann e a Cache]
+____
 O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
 como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
 na capacidade dos sistemas computacionais, enquanto que os sistemas computacionais atuais influenciam no uso ou
@@ -13,7 +13,7 @@ elaboração de novos algoritmos e aumento da carga computacional de algoritmos 
 entretanto, os aprimoramentos de performance nos computadores se manifestam por meios menos triviais que somente o
 aumento da velocidade dos processadores, mas pela introdução de novas componentes às máquinas que, por seu natureza,
 necessitam de uma mínima consideração do desenvolvedor para que sejam aproveitadas devidamente.
-----
+____
 
 Este semi jogo de gato e rato entre problemas/algoritmos e sistemas computacionais, (um dos) motor(es) da busca por
 performance, é motivado por dois fatores: precisão e tempo. Nem todo o problema tem uma solução exata e absoluta. Dos
