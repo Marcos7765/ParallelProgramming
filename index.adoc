@@ -49,3 +49,7 @@ include::relatorio_6/Relatorio.adoc[]
 [[paralelismo-threads-openmp-tasks]]
 [desc="Sobre paralelismo por threads em OpenMP com um tico sobre redução de granularidade e estimativa de custo"]
 include::relatorio_7/Relatorio.adoc[]
+
+[[extra-openmp-cache-coherency-false-sharing-thread-safety]]
+[desc="Digressão ao experimento da postagem de escopos para falar sobre coerência de cache, falso compartilhamento e thread-safety"]
+include::relatorio_8/Relatorio.adoc[]

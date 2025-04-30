@@ -1,0 +1,85 @@
+== Extra: detalhando coerência de cache, falso compartilhamento e thread-safety
+=== Introdução
+Esta postagem deveria ser uma retomada ao problema do relatório 6 e a realização de algumas alterações: adoção de um 
+gerador de números aleatórios thread-safe (originalmente seria somente com uso do `rand()` da `stdlib.h`) e duas
+estratégias diferentes para redução da variável `hit_count`, uma usando variável locais e acúmulo com por uma seção
+`critical`, e outra usando um vetor público compartilhado de hit_counts que seria reduzido sequencialmente depois.Elaboraríamos testes para cada combinação de método de geração de números aleatórios e implementação da redução.
+Sem saber desses requisitos, a versão do relatório 6 já implementa a melhor versão dentre as quatro possibilidades,
+então aqui vou detalhar um pouco mais sobre como isso acontece.
+
+=== Thread-safety
+Se você já consultou alguma referência de C/C++ provavelmente já se deparou com o termo que encabeça a sessão. A
+thread-safety de uma função se refere à capacidade de execução dessa função de forma concorrente/e ou paralela conforme
+pretendido. Uma função que possa chegar a um estado de erro por múltiplas execuções simultâneas não pode ser
+chamada de thread-safe. Como exemplos disso temos a função `readdir` usada no relatório anterior, a função `rand` da
+stdlib do C e o previamente mencionado gerador de números pseudoaleatórios do C++.
+
+O princípio para uma função não ser thread-safe é simples: manipulação concorrente de um recurso sem as devidas
+precauções para condições de corrida. Podemos evidenciá-las nos exemplos: o readdir manipula um ponteiro interno
+(semelhante a um iterador) das entradas do diretório alvo, como nos indicadores de posição em arquivos ou os próprios
+iteradores de C++ (que são todos thread-unsafe), fazendo com que múltiplas chamadas possam corromper e/ou ignorar o
+registro de atualizações no ponteiro. No rand, tanto a seed quanto o estado interno são compartilhados, prejudicando a
+integridade da distribuição de dados (a média das amostras seria algo como uma média ponderada de valores K*N, com N
+sendo o valor amostrado e K a quantia média de amostras simultâneas, com as demais métricas da distribuição também
+sujeitas a análise).
+
+=== Coerência de cache
+
+Recentemente (no briefing da tarefa que resultou nesta postagem) descobri que minha concepção de como os mecanismos de
+coerência de cache operam estava errada: eu achava que o barramento compartilhado entre todos os cores (assumindo uma
+estratégia como _Snooping cache coherence_) seria algo como o barramento de dados, que permite o acesso à memória
+principal pelo processador (e todos os seus cores). Quando contextualizado aos três níveis de cache das CPUs
+contemporâneas (primeiro e segundo níveis exclusivos do core, terceiro nível compartilhado), então, fiz o seguinte
+deslize:
+
+[quote, Paralelismo por Threads com OpenMP: Escopo e seções críticas]
+____
+invalidam as versões das variáveis armazenadas nos níveis mais altos da cache (na minha CPU o mecanismo no nível 3, que
+é compartilhado entre cores, *invalidaria* o nível 1 e 2, exclusivos de cada core), aumentando a latência de acesso a
+memória nas variáveis.
+____
+
+Dessa concepção e desse erro surgem dois problemas: assumindo que a coerência de cache parta do nível 3 da cache, os
+níveis 1 e 2 só seriam invalidados após a chegada do write nele, o que é simplesmente inviável para caches write-back 
+(ou para buffers de escrita em geral); de forma similar isso é aplicado ao próprio barramento: os dados de invalidação
+tanto teriam que chegar até o nível do barramento para serem transportados, quanto que caches write-back aumentariam o congestionamento do barramento com mensagens de que um dado está prestes a mudar.
+
+Para solução disso (ainda mantendo o snooping), seria necessário a existência de um barramento dedicado a coerência
+de cache, invalidando os primeiros níveis de cahce imadiatamente. Alternativamente, para sistemas massivamente
+paralelos, pode ser usado um modelo baseado em diretórios, que é basicamente um PubSub de invalidação de linhas de
+cache.
+
+=== Falso compartilhamento
+
+Por fim, um conceito pouco explorado nas outras postagens: ao falar de coerência de cache, aplicávamos o conceito dela
+para variáveis compartilhadas únicas. Ao se ter variáveis compartilhadas multivaloradas, como em um Array, pode ocorrer
+de que a carga paralela acesse e manipule partições distintas dessa variável, como se cada partição fosse privada à
+thread. Nestes casos, a proximidade entre os valores desta variável na memória fazem com que mudanças em uma partição
+possam invalidar linhas de cache contendo dados de outra partição, forçando o fetching dessa linha mais atualizada 
+(onde ela estiver) antes de que se possa ler/escrever nela, aumentando a latência de E/S.
+
+
+==== Extras:
+
+Write-back e write-through: enquanto que a leitura de dados da memória a partir da cache é trivial, a escrita deles tem
+uma maior nuance. Ao se considerar um programa serial, quando escrevemos uma variável na memória teríamos duas opções
+com a cache: a cache encaminharia a escrita diretamente a memória ou ela bufferizaria a mudança marcando as linha de
+cache que contém os dados alterados, encaminhando a escrita dos dados na memória somente quando fosse necessário
+substituir os dados da linha por novos. Notadamente, a segunda opção é mais atraente por agrupar múltiplas operações de
+escrita, mas é mais problemática quando consideramos a interação de múltiplas componentes com a memória.
+
+A cache é praticamente "invisível" ao desenvolvedor da aplicação, sem que se possa interagir com ela diretamente para
+controle dos dados. Exceto quando não. A depender da arquitetura, é possível marcar páginas da memória como
+_uncacheable_, ler/escrever com _hints_ de que o valor não será utilizado imediatamente, entre outros. Apontando o
+óbvio, são tipos de otimizações muito raras de se implementar (quanto mais com sucesso) e é escovar bit até pros meus
+padrões. Evitar a cache só seria benéfico se a troca de linhas de cache e/ou invalidação e fetching a partir de outras
+caches privadas fossem mais rápidas que uma execução sem cache.
+
+=== Relacionados
+
+- Aqui a seção de coerência de cache foi baseada na apresentada no Cap. 2 do link:https://www.amazon.com/Introduction-Parallel-Programming-Peter-Pacheco/dp/0128046058[livro do Pacheco].
+- Você pode ter uma olhada melhor para cache no Computer Architecture: A Quantitative Approach, como na referência d
+primeira postagem.
+- O link:https://people.freebsd.org/~lstewart/articles/cpumemory.pdf[What Every Programmer Should Know About Memory]
+ajudou em ver algumas formas de se ignorar a cache no lado da aplicação. É um material novo para mim mas na folheada por
+esse conteúdo gostei do que vi.

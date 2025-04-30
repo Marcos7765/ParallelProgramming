@@ -440,7 +440,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
              .nav-footer{text-align: center; margin-top: auto;}
              .nav-footer > p > a {white-space: nowrap;}</style>
 </head>
-<body id="paralelismo-threads-openmp-escopos-critical" class="book toc2 toc-left text-justify">
+<body id="extra-openmp-cache-coherency-false-sharing-thread-safety" class="book toc2 toc-left text-justify">
 <div id="header" style="max-width: 80%;">
 <h1>Programação Paralela</h1>
 <div class="details">
@@ -460,626 +460,150 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="paralelismo-threads-openmp-for.html">Paralelismo por Threads com OpenMP</a>
 </li>
-<li><a href="paralelismo-threads-openmp-escopos-critical.html"><span class="toc-current">Paralelismo por Threads com OpenMP: Escopo e seções críticas</span></a>
-<ul class="sectlevel2">
-<li><a href="paralelismo-threads-openmp-escopos-critical.html#_introdução_6">Introdução</a>
-</li>
-<li><a href="paralelismo-threads-openmp-escopos-critical.html#_experimento_4">Experimento</a>
-</li>
-<li><a href="paralelismo-threads-openmp-escopos-critical.html#_resultados_2">Resultados</a>
-</li>
-<li><a href="paralelismo-threads-openmp-escopos-critical.html#_relacionados_6">Relacionados</a>
-</li>
-<li><a href="paralelismo-threads-openmp-escopos-critical.html#_íntegra_dos_códigos_6">Íntegra dos códigos</a>
-</li>
-</ul>
+<li><a href="paralelismo-threads-openmp-escopos-critical.html">Paralelismo por Threads com OpenMP: Escopo e seções críticas</a>
 </li>
 <li><a href="paralelismo-threads-openmp-tasks.html">Paralelismo por Threads com OpenMP: Tasks</a>
 </li>
-<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html">Extra: detalhando coerência de cache, falso compartilhamento e thread-safety</a>
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html"><span class="toc-current">Extra: detalhando coerência de cache, falso compartilhamento e thread-safety</span></a>
+<ul class="sectlevel2">
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html#_introdução_8">Introdução</a>
+</li>
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html#_thread_safety">Thread-safety</a>
+</li>
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html#_coerência_de_cache">Coerência de cache</a>
+</li>
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html#_falso_compartilhamento">Falso compartilhamento</a>
+</li>
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html#_relacionados_8">Relacionados</a>
+</li>
+</ul>
 </li>
 </ul>
 </div>
 </div>
 <div id="content" style="max-width: 80%;">
 <div class="sect1">
-<h2 id="paralelismo-threads-openmp-escopos-critical">Paralelismo por Threads com OpenMP: Escopo e seções críticas</h2>
+<h2 id="extra-openmp-cache-coherency-false-sharing-thread-safety">Extra: detalhando coerência de cache, falso compartilhamento e thread-safety</h2>
 <div class="sectionbody">
 <div class="sect2">
-<h3 id="_introdução_6">Introdução</h3>
+<h3 id="_introdução_8">Introdução</h3>
 <div class="paragraph">
-<p>Seguindo o tema de OpenMP, este é basicamente um exercício: vou descrever aqui uma progressão imaginária no
-desenvolvimento de uma versão paralela de um algoritmo para estimar \(\pi\) estocasticamente, começando pela
-versão serial, tentando ingenuamente jogar só um <code>parallel for</code> para paralelizar o algoritmo todo (que apesar de ser
-trivialmente paralelizável, não é tão simples quanto isso) e falhando miseravelmente, apontando os erros dessa
-implementação e, por requisito do relatório, implementando uma solução com as seções críticas.
-Penso ter uma falha enorme nessas minhas postagens: elas são ruins para quem não sabe do que estou falando e não são
-relevantes para quem já sabe. Se você especificamente estiver no início do aprendizado com OpenMP e está lendo isso,
-<strong>talvez</strong> esta postagem sirva como um exercício de fixação.</p>
+<p>Esta postagem deveria ser uma retomada ao problema do relatório 6 e a realização de algumas alterações: adoção de um
+gerador de números aleatórios thread-safe (originalmente seria somente com uso do <code>rand()</code> da <code>stdlib.h</code>) e duas
+estratégias diferentes para redução da variável <code>hit_count</code>, uma usando variável locais e acúmulo com por uma seção
+<code>critical</code>, e outra usando um vetor público compartilhado de hit_counts que seria reduzido sequencialmente depois.Elaboraríamos testes para cada combinação de método de geração de números aleatórios e implementação da redução.
+Sem saber desses requisitos, a versão do relatório 6 já implementa a melhor versão dentre as quatro possibilidades,
+então aqui vou detalhar um pouco mais sobre como isso acontece.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_experimento_4">Experimento</h3>
+<h3 id="_thread_safety">Thread-safety</h3>
 <div class="paragraph">
-<p>O código que desejamos paralelizar realiza uma estimativa de \(\pi\) através do seguinte: a razão da área
-de um círculo circunscrito a um quadrado com a área do quadrado em si é \(\frac{\pi r^2}{l^2} = \frac{\pi r^2}{(2r)^2} = \frac{\pi}{4}\), que chamaremos de \(c\). Se selecionássemos aleatoriamente um ponto deste quadrado, a
-probabilidade de que este ponto estivesse na área do círculo seria proporcional a razão entre essas áreas. Usando a lei
-dos grande números, temos que \(\lim_{N\to\infty}{\frac{Pts_{circulo}(N)}{Total(N)}} = \frac{\pi}{4}\) e podemos
-estimar \(\pi\) amostrando pontos aleatórios contidos no quadrado. O código da implementação serial desse
-aproximador é:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">bool unitary_circle_collision(double x, double y){
-    return x*x + y*y &lt;= 1.;
-}
-
-return_data estimate_pi_serial(unsigned long total_samples, unsigned long num_threads){
-
-    auto start = utils::mark_time();
-    unsigned long hit_count = 0;
-    double res;
-    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
-    std::random_device rand_dev;
-    std::mt19937 generator(rand_dev());
-
-    for (unsigned long i = 0; i &lt; total_samples; i++){
-        if (unitary_circle_collision(sampler(generator), sampler(generator))){
-            hit_count++;
-        }
-    }
-
-    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}</code></pre>
-</div>
+<p>Se você já consultou alguma referência de C/C provavelmente já se deparou com o termo que encabeça a sessão. A
+thread-safety de uma função se refere à capacidade de execução dessa função de forma concorrente/e ou paralela conforme
+pretendido. Uma função que possa chegar a um estado de erro por múltiplas execuções simultâneas não pode ser
+chamada de thread-safe. Como exemplos disso temos a função `readdir` usada no relatório anterior, a função `rand` da
+stdlib do C e o previamente mencionado gerador de números pseudoaleatórios do C.</p>
 </div>
 <div class="paragraph">
-<p>E para nossa alegria, ele é trivialmente paralelizável: tanto a geração de amostras quanto a checagem de pertencimento
-ao círculo são indepentes. Podemos só colocar a diretiva <code>pragma omp parallel for</code> então? Teríamos:</p>
+<p>O princípio para uma função não ser thread-safe é simples: manipulação concorrente de um recurso sem as devidas
+precauções para condições de corrida. Podemos evidenciá-las nos exemplos: o readdir manipula um ponteiro interno
+(semelhante a um iterador) das entradas do diretório alvo, como nos indicadores de posição em arquivos ou os próprios
+iteradores de C++ (que são todos thread-unsafe), fazendo com que múltiplas chamadas possam corromper e/ou ignorar o
+registro de atualizações no ponteiro. No rand, tanto a seed quanto o estado interno são compartilhados, prejudicando a
+integridade da distribuição de dados (a média das amostras seria algo como uma média ponderada de valores K*N, com N
+sendo o valor amostrado e K a quantia média de amostras simultâneas, com as demais métricas da distribuição também
+sujeitas a análise).</p>
 </div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data estimate_pi_naive_parallel(unsigned long total_samples, unsigned long num_threads){
-
-    auto start = utils::mark_time();
-    unsigned long hit_count = 0;
-    double res;
-    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
-    std::random_device rand_dev;
-    std::mt19937 generator(rand_dev());
-
-    #pragma omp parallel for num_threads(num_threads)
-    for (unsigned long i = 0; i &lt; total_samples; i++){
-        if (unitary_circle_collision(sampler(generator), sampler(generator))){
-            hit_count++;
-        }
-    }
-
-    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}</code></pre>
+</div>
+<div class="sect2">
+<h3 id="_coerência_de_cache">Coerência de cache</h3>
+<div class="paragraph">
+<p>Recentemente (no briefing da tarefa que resultou nesta postagem) descobri que minha concepção de como os mecanismos de
+coerência de cache operam estava errada: eu achava que o barramento compartilhado entre todos os cores (assumindo uma
+estratégia como <em>Snooping cache coherence</em>) seria algo como o barramento de dados, que permite o acesso à memória
+principal pelo processador (e todos os seus cores). Quando contextualizado aos três níveis de cache das CPUs
+contemporâneas (primeiro e segundo níveis exclusivos do core, terceiro nível compartilhado), então, fiz o seguinte
+deslize:</p>
+</div>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>invalidam as versões das variáveis armazenadas nos níveis mais altos da cache (na minha CPU o mecanismo no nível 3, que
+é compartilhado entre cores, <strong>invalidaria</strong> o nível 1 e 2, exclusivos de cada core), aumentando a latência de acesso a
+memória nas variáveis.</p>
+</div>
+</blockquote>
+<div class="attribution">
+&#8212; Paralelismo por Threads com OpenMP: Escopo e seções críticas
 </div>
 </div>
 <div class="paragraph">
-<p>Por prudência, vamos testar o código (honestamente, nunca entendi como alguém só escreveria o código e o entregaria sem
-executar. é uma confiança alienígena pra mim).</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-console hljs" data-lang="console">//referência: o uso do comando é ./estimar_pi &lt;MODO&gt; &lt;NÚMERO DE AMOSTRAS&gt; &lt;NÚMERO DE THREADS&gt; [-printCSV]
-$ ./estimar_pi SERIAL 30000 1
-Result for n = 30000: 3.129333; Total elapsed time: 0.651350 ms
-$ ./estimar_pi NAIVE_PARALLEL 30000 1
-Result for n = 30000: 3.134933; Total elapsed time: 0.611574 ms
-$ ./estimar_pi NAIVE_PARALLEL 30000 2
-Result for n = 30000: 2.890133; Total elapsed time: 0.452840 ms
-$ ./estimar_pi NAIVE_PARALLEL 30000 6
-Result for n = 30000: 0.907333; Total elapsed time: 0.546257 ms
-$ ./estimar_pi NAIVE_PARALLEL 30000 12
-Result for n = 30000: 1.773600; Total elapsed time: 3.908814 ms</code></pre>
-</div>
+<p>Dessa concepção e desse erro surgem dois problemas: assumindo que a coerência de cache parta do nível 3 da cache, os
+níveis 1 e 2 só seriam invalidados após a chegada do write nele, o que é simplesmente inviável para caches write-back
+(ou para buffers de escrita em geral); de forma similar isso é aplicado ao próprio barramento: os dados de invalidação
+tanto teriam que chegar até o nível do barramento para serem transportados, quanto que caches write-back aumentariam o congestionamento do barramento com mensagens de que um dado está prestes a mudar.</p>
 </div>
 <div class="paragraph">
-<p>Apesar de, para um processo estocástico, ser possível de se obter qualquer valor entre 0 e 4 como resultado, esta
-sequência de valores muito errados para execuções com mais de uma thread nos sugere um erro. Poupando toda a criação de
-um conjunto de amostras e análise de significância para negar ou não a hipótese de de fato ter um erro nas amostras,
-vamos voltar atenção ao código.</p>
+<p>Para solução disso (ainda mantendo o snooping), seria necessário a existência de um barramento dedicado a coerência
+de cache, invalidando os primeiros níveis de cahce imadiatamente. Alternativamente, para sistemas massivamente
+paralelos, pode ser usado um modelo baseado em diretórios, que é basicamente um PubSub de invalidação de linhas de
+cache.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_falso_compartilhamento">Falso compartilhamento</h3>
+<div class="paragraph">
+<p>Por fim, um conceito pouco explorado nas outras postagens: ao falar de coerência de cache, aplicávamos o conceito dela
+para variáveis compartilhadas únicas. Ao se ter variáveis compartilhadas multivaloradas, como em um Array, pode ocorrer
+de que a carga paralela acesse e manipule partições distintas dessa variável, como se cada partição fosse privada à
+thread. Nestes casos, a proximidade entre os valores desta variável na memória fazem com que mudanças em uma partição
+possam invalidar linhas de cache contendo dados de outra partição, forçando o fetching dessa linha mais atualizada
+(onde ela estiver) antes de que se possa ler/escrever nela, aumentando a latência de E/S.</p>
 </div>
 <div class="sect3">
-<h4 id="_escopos_de_variáveis_e_seções_críticas">Escopos de variáveis e seções críticas</h4>
+<h4 id="_extras">Extras:</h4>
 <div class="paragraph">
-<p>Para programas de memória compartilhada em geral, existem dois tipos de variáveis:
-aquelas disponíveis a todos os participantes (que vou chamar de threads daqui em diante), e aquelas privadas, que são
-exclusivas de cada thread. Para OpenMP, por padrão as variáveis que são declaradas antes do início da sessão paralela
-são compartilhadas, enquanto que as declaradas dentro do bloco são privadas (o que não poderia ser diferente, já que a
-declaração ocorre em paralelo). Vamos começar com uma convencionada boa prática para OpenMP e alterar esse padrão,
-usando a cláusula <code>default(none)</code> na diretiva <code>parallel</code> para o escopo de compartilhamento das variáveis usadas dentro
-da seção não sejam assumidas. Com isso, precisamos ativamente expressar quais variáveis devem ser compartilhadas e quais devem ser privadas, diminuindo as chances de erros inconscientes causados por um escopo inadequado.</p>
-</div>
-<div class="paragraph">
-<p>Para decisão do que precisa ser compartilhado ou não, precisamos pensar em como o código funciona (ou como queremos que
-ele funcione). Variáveis como o <code>sampler</code> e o <code>total_samples</code> são necessitadas por todas as threads e não são alteradas
-por nenhuma delas durante a seção, então podem seguradamente ser compartilhadas. <code>hit_count</code> e, mais implicitamente,
-<code>generator</code> são variáveis que tem seu valor (ou estado) alterado durante a execução, então temos que considerar mais
-fatores: <code>hit_count</code> deve conter todos os acertos contabilizados pelas threads ao fim da execução paralela, necessitando
-de sincronização entre as threads para o cálculo do seu valor. O gerador de números pseudoaleatórios de <code>generator</code>
-possui um estado interno que altera após cada geração, podendo, na ocorrência de duas chamadas de geração simultâneas,
-gerar números a partir do mesmo estado, afetando a distribuição de probabilidade amostral (equivalente a fazer uma média
-ponderada com pesos aleatórios entre 1 e o número de threads e menos amostras no código serial) e podendo corromper o
-estado interno do gerador. Como a geração de números aleatórios a partir de múltiplos geradores com diferentes seeds é
-estatisticamente independente entre os geradores, basta que cada thread tenha seu próprio gerador e o inicie sua própria
-seed aleatória. Infelizmente, seja pela função <code>rand()</code> da <code>stdlib</code> do C ou pelo <code>std::random_device</code> do C++, não se
-pode garantir que gerações paralelas sejam independentes nas suas implementações, então é necessário que cada thread
-gere sua seed sequencialmente.</p>
+<p>Write-back e write-through: enquanto que a leitura de dados da memória a partir da cache é trivial, a escrita deles tem
+uma maior nuance. Ao se considerar um programa serial, quando escrevemos uma variável na memória teríamos duas opções
+com a cache: a cache encaminharia a escrita diretamente a memória ou ela bufferizaria a mudança marcando as linha de
+cache que contém os dados alterados, encaminhando a escrita dos dados na memória somente quando fosse necessário
+substituir os dados da linha por novos. Notadamente, a segunda opção é mais atraente por agrupar múltiplas operações de
+escrita, mas é mais problemática quando consideramos a interação de múltiplas componentes com a memória.</p>
 </div>
 <div class="paragraph">
-<p>Para realizar estas sincronizações, podemos usar a diretiva <code>critical</code> para sinalizar uma seção que só pode ser
-executada por um único thread por vez. Assim, a inevitável geração de seeds sequencial pode ser feita sem mais
-problemas, mas temos uma oportunidade para o <code>hit_count</code>: se somente usássemos <code>critical</code> na instrução de incremento do
-<code>hit_count</code>, estaríamos tornando parte de cada processamento de amostra sequencial, aproximando mais o tempo de execução
-paralelo ao sequencial. Se introduzíssemos uma variável privada para contabilizar os pontos dentro do círculo em cada
-thread e somássemos o valor dessa variável em cada thread ao valor total, teríamos uma paralelização completa das
-iterações às custas de uma operação sequencial adicional para cada thread. Este conceito específico são de variáveis de
-redução, e apesar do OpenMP já disponibilizar uma cláusula para declaração desse tipo de variável (e sua operação de
-redução), vamos fazê-la com essa variável adicional e redução à mão para fins didáticos.</p>
-</div>
-<div class="paragraph">
-<p>Por último, nem toda variável privada é igual em OpenMP: variáveis especificadas como privadas através da cláusula
-<code>private</code> não só perdem o valor que guardavam antes da seção paralela, como não são inicializadas, podendo ter qualquer
-valor não-limpo que houvesse no espaço de memória em que ocupa. Para corrigir isso, ou inicializamos ela novamente
-dentro da seção ou usamos a cláusula <code>firstprivate</code> para que ela seja privada e inicializada com o mesmo valor que
-possuía antes da seção. Com todas essas mudanças, temos o código:</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data estimate_pi_parallel(unsigned long total_samples, unsigned long num_threads){
-
-    auto start = utils::mark_time();
-    unsigned long hit_count = 0;
-    unsigned long local_hit_count = 0;
-    double res;
-    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
-    std::mt19937 generator;
-    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
-    {
-        std::random_device::result_type seed;
-        #pragma omp critical
-        {
-            seed = std::random_device()();
-        }
-        generator.seed(seed);
-        #pragma omp for
-        for (unsigned long i = 0; i &lt; total_samples; i++){
-            if (unitary_circle_collision(sampler(generator), sampler(generator))){
-                    local_hit_count++;
-            }
-        }
-        #pragma omp critical
-        {
-            hit_count += local_hit_count;
-        }
-    }
-
-    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>E só nos resta testar novamente. No final de cada postagem disponibilizo a íntegra dos códigos usados para experimento,
-amostragem e tratamento dos dados. Eles e a própria fonte desse texto em AsciiDoc estão disponíveis <a href="https://github.com/Marcos7765/ParallelProgramming">neste repositório git</a>.
-No momento em que escrevo ele não possui qualquer readme e não tenho intenção imediata de provê-los, mas creio que dê
-para entender que cada pasta "relatorio_N" se refira a N-ésima postagem. Como não numero elas aqui (apesar de ser por
-ordem de ocorrência, o que deve ficar ruim quando tiverem muitas postagens), consto que esse é o relatório 6. Chega de
-enrolação, vamos para a seção de resultados.</p>
+<p>A cache é praticamente "invisível" ao desenvolvedor da aplicação, sem que se possa interagir com ela diretamente para
+controle dos dados. Exceto quando não. A depender da arquitetura, é possível marcar páginas da memória como
+<em>uncacheable</em>, ler/escrever com <em>hints</em> de que o valor não será utilizado imediatamente, entre outros. Apontando o
+óbvio, são tipos de otimizações muito raras de se implementar (quanto mais com sucesso) e é escovar bit até pros meus
+padrões. Evitar a cache só seria benéfico se a troca de linhas de cache e/ou invalidação e fetching a partir de outras
+caches privadas fossem mais rápidas que uma execução sem cache.</p>
 </div>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_resultados_2">Resultados</h3>
-<table class="tableblock frame-all grid-all stretch">
-<colgroup>
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1111%;">
-<col style="width: 11.1112%;">
-</colgroup>
-<tbody>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">NUM_THREADS</p></td>
-<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">1</p></td>
-<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">3</p></td>
-<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">6</p></td>
-<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">12</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_PI_EST</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">MODE</p></td>
-<td class="tableblock halign-left valign-top" colspan="8"></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">SERIAL</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3.1415</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">180.125</p></td>
-<td class="tableblock halign-left valign-top" colspan="6"></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">NAIVE_PARALLEL</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3.1416</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">224.506</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">2.13496</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">128.104</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">1.09053</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">110.884</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">0.728185</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">109.446</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">PARALLEL</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3.14159</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">188.04</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3.14159</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">67.6446</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3.1415</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">39.7987</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">3.14139</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">37.0162</p></td>
-</tr>
-</tbody>
-</table>
-<div class="paragraph">
-<p>Com 30 execuções para cada combinação de modo e número de threads (sim aquele número mágico para um intervalo de
-confiança de 95% quando usamos o teorema central do limite pra dizer que isso já é quase a distribuição normal que
-queremos aproximar, mas não lembramos direito o pra quê do número ou só usamos porque os outros usam. Prob. e
-Estatística costuma ser no início do curso e depois de um tempo sem ter que usá-la você esquece mesmo), podemos ver uma
-certa consistência do valor estimado entre as diferentes quantias de threads usadas na versão corrigida, com ainda uma
-melhora bônus no desempenho: ao alterar <code>hit_count</code> e o estado interno de <code>generator</code> na primeira tentativa de
-paralelização, os mecanismos de coerência de cache, que buscam garantir que todas as caches dos cores do processador
-tenham valores atualizados das variáveis compartilhadas, invalidam as versões das variáveis armazenadas nos níveis mais
-altos da cache (na minha CPU o mecanismo no nível 3, compartilhado entre cores, seria corrigido quando a escrita do dado
-chegasse nele, enquanto que as linhas com a variável na cache de nível 1 e 2 seriam invalidadas imediatamente, exigindo
-um fetching na memória que, provavelmente, será um hit no cache de nível 3)*, aumentando a latência de acesso a memória
-nas variáveis.</p>
-</div>
-<div class="paragraph">
-<p>Bônus: você pode ter se questionado "mas o compilador não poderia só guardar <code>hit_count</code> em um registrador e não
-acessá-lo da memória?" Em um programa serial (ou um compilador muito xibata/porcaria pra código paralelo), sim. Desde
-antes de qualquer intenção em rodar programas paralelos, tanto C quanto C++ já tem a noção de que espaços na memória
-podem ter seus valores alterados por fora do programa durante a sua execução, e fornecem o qualificador <code>volatile</code> para
-sinalizar isso em uma variável para o compilador. Variáveis compartilhadas, sobretudo aquelas que sofrem alterações, são
-consideradas como voláteis para o compilador, evitando otimizações desse tipo.</p>
-</div>
-<div class="paragraph">
-<p>*Corrigido, detalhes em "Extra: detalhando coerência de cache, falso compartilhamento e thread-safety".</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_relacionados_6">Relacionados</h3>
+<h3 id="_relacionados_8">Relacionados</h3>
 <div class="ulist">
 <ul>
 <li>
-<p>A 3a postagem daqui mostra um algoritmo que converge muitíssimo mais rápido que esse. Ele também é paralelizável,
-tendo sido implementado em paralelo (com threads!) no <a href="http://www.numberworld.org/y-cruncher/">y-cruncher</a> e usado
-para quebrar recordes de casas de precisão calculadas desde o final de 2009.</p>
+<p>Aqui a seção de coerência de cache foi baseada na apresentada no Cap. 2 do <a href="https://www.amazon.com/Introduction-Parallel-Programming-Peter-Pacheco/dp/0128046058">livro do Pacheco</a>.</p>
+</li>
+<li>
+<p>Você pode ter uma olhada melhor para cache no Computer Architecture: A Quantitative Approach, como na referência d
+primeira postagem.</p>
+</li>
+<li>
+<p>O <a href="https://people.freebsd.org/~lstewart/articles/cpumemory.pdf">What Every Programmer Should Know About Memory</a>
+ajudou em ver algumas formas de se ignorar a cache no lado da aplicação. É um material novo para mim mas na folheada por
+esse conteúdo gostei do que vi.</p>
 </li>
 </ul>
 </div>
 </div>
-<div class="sect2">
-<h3 id="_íntegra_dos_códigos_6">Íntegra dos códigos</h3>
-<details>
-<summary class="title">main.cpp</summary>
-<div class="content">
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-c++ hljs" data-lang="c++">#include &lt;cstdio&gt;
-#include &lt;unordered_map&gt;
-#include &lt;string&gt;
-#include &lt;cerrno&gt;
-#include "utils.h"
-#include &lt;cmath&gt;
-#include &lt;omp.h&gt;
-#include &lt;random&gt;
-enum PRINT_MODE {
-    REGULAR,
-    CSV
-};
-
-
-std::unordered_map&lt;std::string, PRINT_MODE&gt; print_flags = {
-    {"-printCSV", CSV},
-};
-
-typedef utils::_return_data&lt;double&gt; return_data;
-
-bool unitary_circle_collision(double x, double y){
-    return x*x + y*y &lt;= 1.;
-}
-
-return_data estimate_pi_serial(unsigned long total_samples, unsigned long num_threads){
-    
-    auto start = utils::mark_time();
-    unsigned long hit_count = 0;
-    double res;
-    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
-    std::random_device rand_dev;
-    std::mt19937 generator(rand_dev());
-
-    for (unsigned long i = 0; i &lt; total_samples; i++){
-        if (unitary_circle_collision(sampler(generator), sampler(generator))){
-            hit_count++;
-        }
-    }
-
-    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}
-
-return_data estimate_pi_naive_parallel(unsigned long total_samples, unsigned long num_threads){
-    
-    auto start = utils::mark_time();
-    unsigned long hit_count = 0;
-    double res;
-    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
-    std::random_device rand_dev;
-    std::mt19937 generator(rand_dev());
-
-    #pragma omp parallel for num_threads(num_threads)
-    for (unsigned long i = 0; i &lt; total_samples; i++){
-        if (unitary_circle_collision(sampler(generator), sampler(generator))){
-            hit_count++;
-        }
-    }
-
-    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}
-
-return_data estimate_pi_parallel(unsigned long total_samples, unsigned long num_threads){
-    
-    auto start = utils::mark_time();
-    unsigned long hit_count = 0;
-    unsigned long local_hit_count = 0;
-    double res;
-    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
-    std::mt19937 generator;
-    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
-    {
-        std::random_device::result_type seed;
-        #pragma omp critical
-        {
-            seed = std::random_device()();
-        }
-        generator.seed(seed);
-        #pragma omp for
-        for (unsigned long i = 0; i &lt; total_samples; i++){
-            if (unitary_circle_collision(sampler(generator), sampler(generator))){
-                    local_hit_count++;
-            }
-        }
-        #pragma omp critical
-        {
-            hit_count += local_hit_count;
-        }
-    }
-
-    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
-    auto end = utils::mark_time();
-    return {res, utils::calc_time_interval_ms(start, end)};
-}
-
-
-typedef return_data (*target_func_ptr)(size_t, size_t);
-
-std::unordered_map&lt;std::string, target_func_ptr&gt; modes = {
-    {"SERIAL", estimate_pi_serial},
-    {"NAIVE_PARALLEL", estimate_pi_naive_parallel},
-    {"PARALLEL", estimate_pi_parallel},
-};
-
-int main(int argc, char* argv[]){
-    PRINT_MODE print_mode = REGULAR;
-    if (argc &lt; 4){
-        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;NUM_SAMPLES&gt; &lt;NUM_THREADS&gt; [-printCSV]\n", argv[0]);
-        printf("&lt;MODE&gt; being either SERIAL, NAIVE_PARALLEL or PARALLEL\n");
-        exit(1);
-    } else{
-        if (argc &gt; 5) {
-            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;NUM_SAMPLES&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
-                argv[5], argv[0]);
-            exit(1);
-        }
-        if (argc == 5){
-            auto temp_print = print_flags.find(argv[4]);
-            if (temp_print == print_flags.end()){
-                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;NUM_SAMPLES&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
-                    argv[4], argv[0]);
-                exit(1);
-            }
-            print_mode = temp_print-&gt;second;
-        }
-    }
-
-    auto mode = modes.find(argv[1]);
-    if (mode == modes.end()){
-        printf("Invalid mode: %s. Choose between SERIAL, NAIVE_PARALLEL or PARALLEL\n", argv[1]);
-        exit(1);
-    }
-
-    target_func_ptr func = mode-&gt;second;
-
-    size_t params[2];
-    for (auto i = 0; i &lt; 2; i++){
-        params[i] = std::strtoul(argv[2+i], NULL, 10);
-        if (params[i] == 0 || errno == ERANGE){
-            printf("Invalid parameter: %s.\n", argv[2+i]);
-            exit(1);
-        }
-    }
-
-    return_data exec_data = mode-&gt;second(params[0], params[1]);
-
-    switch (print_mode)
-    {
-    case CSV:
-        printf("%s, %lu, %lu, %f, %f\n", argv[1], params[0], params[1], exec_data.res, exec_data.time_ms);
-        break;
-    default:
-        printf("Result for n = %lu: %f; Total elapsed time: %f ms\n", params[0], exec_data.res, exec_data.time_ms);
-        break;
-    }
-
-    return 0;
-}</code></pre>
-</div>
-</div>
-</div>
-</details>
-<details>
-<summary class="title">run_tests.sh</summary>
-<div class="content">
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">EXEC_FILE="./a.out"
-PYTHON_EXEC=python3
-
-THREAD_VALUES="1 3 6 12"
-
-#alternating modes manually
-MODES="SERIAL NAIVE_PARALLEL PARALLEL"
-PROBLEM_SIZE=10000000 #10^8
-NUM_SAMPLES=30
-
-OUTPUT_FILE=$1
-STATUS=0
-
-if [ -z "$OUTPUT_FILE" ]
-then
-    echo "Pass the path to an output file, use: $0 &lt;path/to/output&gt;"
-    exit
-fi
-echo MODE,NUM_SAMPLES,NUM_THREADS,ESTIMATED_PI,TIME_MS &gt; $OUTPUT_FILE
-
-
-for MODE in $MODES
-do
-    SAMPLE=1
-    while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
-    do
-        if [ "$MODE" != "SERIAL" ]
-        then
-            for NUM_THREADS in $THREAD_VALUES
-            do
-                echo running "$EXEC_FILE $MODE $PROBLEM_SIZE $NUM_THREADS -printCSV &gt;&gt; $OUTPUT_FILE"
-                $EXEC_FILE $MODE $PROBLEM_SIZE $NUM_THREADS -printCSV &gt;&gt; $OUTPUT_FILE
-                STATUS=$?
-                if [ "$STATUS" -ne 0 ]
-                then
-                    #intended for when the MAT_SIDE is too big for the program to allocate this much memory
-                    echo Some error occurred, stopping early.
-                    exit
-                fi
-            done
-        else
-            echo running "$EXEC_FILE $MODE $PROBLEM_SIZE 1 -printCSV &gt;&gt; $OUTPUT_FILE"
-            $EXEC_FILE $MODE $PROBLEM_SIZE 1 -printCSV &gt;&gt; $OUTPUT_FILE
-            STATUS=$?
-            if [ "$STATUS" -ne 0 ]
-            then
-                #intended for when the MAT_SIDE is too big for the program to allocate this much memory
-                echo Some error occurred, stopping early.
-                exit
-            fi
-        fi
-        SAMPLE=$(($SAMPLE+1))
-    done
-done</code></pre>
-</div>
-</div>
-</div>
-</details>
-<details>
-<summary class="title">process_data.py</summary>
-<div class="content">
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-python hljs" data-lang="python">import pandas as pd
-import sys
-
-if len(sys.argv) &lt; 3: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;output_path&gt;"); exit(0)
-if len(sys.argv) &gt; 3: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;output_path&gt;"); exit(0)
-
-data = pd.read_csv(sys.argv[1])
-
-data = data.groupby(['MODE', 'NUM_THREADS']).aggregate(
-    MEAN_PI_EST=('ESTIMATED_PI','mean'),
-    MEAN_TIME_MS=('TIME_MS', 'mean')
-).unstack('NUM_THREADS')
-
-data.columns = data.columns.swaplevel(0,1)
-data = data.sort_index(axis=1)#.reset_index(level='')
-data = data.loc[["SERIAL", "NAIVE_PARALLEL", "PARALLEL"]]
-
-data.to_csv(sys.argv[2], float_format="%.6g")
-
-#can't differentiate indexes to merge, maybe adding a index list of which lines to merge?
-def csv_line_to_asciidoc(_line, sep=",", merge=True):
-    line = _line
-    if _line.endswith("\n"): line = _line[:-1]
-    skip_tuple_token = (None, None)
-    new_line = []
-    ipair_line = list(enumerate(line.split(sep)))
-    for i, word in ipair_line:
-        if i is None:
-            continue
-        rep_count = 0
-        if merge or word == '':
-            for j, next_word in ipair_line[i+1:]:
-                if next_word != word:
-                    if next_word != '':
-                        break
-                rep_count += 1
-                ipair_line[j] = skip_tuple_token
-        if rep_count == 0:
-            new_line.append(f"|{word}\n")
-        else:
-            new_line.append(f"{rep_count+1}+|{word}\n")
-    new_line[-1] = new_line[-1][:-1] + "  \n" 
-    return "".join(new_line)
-        
-merge_indexes = [0]
-for i,line in enumerate(open(f"{sys.argv[2]}").readlines()):
-    print(csv_line_to_asciidoc(line, merge=i in merge_indexes))</code></pre>
-</div>
-</div>
-</div>
-</details>
-</div>
 </div>
 </div>
 <div class="paragraph nav-footer">
-<p>← Previous: <a href="paralelismo-threads-openmp-for.html">Paralelismo por Threads com OpenMP</a> | ↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="paralelismo-threads-openmp-tasks.html">Paralelismo por Threads com OpenMP: Tasks</a> →</p>
+<p>← Previous: <a href="paralelismo-threads-openmp-tasks.html">Paralelismo por Threads com OpenMP: Tasks</a> | ↑ Up: <a href="index.html">Programação Paralela</a></p>
 </div>
 </div>
 <div id="footer" style="max-width: 80%;">

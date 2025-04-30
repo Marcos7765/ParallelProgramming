@@ -476,6 +476,8 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="paralelismo-threads-openmp-tasks.html">Paralelismo por Threads com OpenMP: Tasks</a>
 </li>
+<li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html">Extra: detalhando coerência de cache, falso compartilhamento e thread-safety</a>
+</li>
 </ul>
 </div>
 </div>
@@ -490,15 +492,21 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 nota a toa) falar um pouco sobre uma das principais razões a quais essa jornada de otimização de programas é feita:
 precisão. Parafraseando a introdução da primeira postagem, que é bem conveniente pra esse assunto:</p>
 </div>
-<div class="listingblock">
-<div class="content">
-<pre>O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>O desempenho de programas e algoritmos é um fator determinante na viabilidade de aplicações desde antes dos computadores
 como os temos hoje existem. Como em um ciclo de realimentação, problemas e algoritmos para resolvê-los promovem avanços
 na capacidade dos sistemas computacionais, enquanto que os sistemas computacionais atuais influenciam no uso ou
 elaboração de novos algoritmos e aumento da carga computacional de algoritmos já existentes. Com o passar do tempo,
 entretanto, os aprimoramentos de performance nos computadores se manifestam por meios menos triviais que somente o
 aumento da velocidade dos processadores, mas pela introdução de novas componentes às máquinas que, por seu natureza,
-necessitam de uma mínima consideração do desenvolvedor para que sejam aproveitadas devidamente.</pre>
+necessitam de uma mínima consideração do desenvolvedor para que sejam aproveitadas devidamente.</p>
+</div>
+</blockquote>
+<div class="attribution">
+&#8212; Eu mesmo<br>
+<cite>em Gargalo de Von Neumann e a Cache</cite>
 </div>
 </div>
 <div class="paragraph">
