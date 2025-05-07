@@ -440,7 +440,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
              .nav-footer{text-align: center; margin-top: auto;}
              .nav-footer > p > a {white-space: nowrap;}</style>
 </head>
-<body id="pipelining-e-vetorizacao" class="book toc2 toc-left text-justify">
+<body id="paralelismo-threads-openmp-atomic-reduce" class="book toc2 toc-left text-justify">
 <div id="header" style="max-width: 80%;">
 <h1>Programação Paralela</h1>
 <div class="details">
@@ -452,19 +452,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <p><span class="toc-root"><a href="index.html">Programação Paralela</a></span></p><ul class="sectlevel1">
 <li><a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a>
 </li>
-<li><a href="pipelining-e-vetorizacao.html"><span class="toc-current">Pipelining e Vetorização</span></a>
-<ul class="sectlevel2">
-<li><a href="pipelining-e-vetorizacao.html#_introdução_2">Introdução</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_experimento">Experimento</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_resultado">Resultado</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_relacionados_2">Relacionados</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_íntegra_dos_códigos_2">Íntegra dos códigos</a>
-</li>
-</ul>
+<li><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a>
 </li>
 <li><a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a>
 </li>
@@ -480,552 +468,277 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="paralelismo-threads-openmp-sincronizacao.html">Paralelismo por Threads com OpenMP: sincronização com critical e locks</a>
 </li>
-<li><a href="paralelismo-threads-openmp-atomic-reduce.html">Paralelismo por Threads com OpenMP: sincronização com atomic e reduction</a>
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html"><span class="toc-current">Paralelismo por Threads com OpenMP: sincronização com atomic e reduction</span></a>
+<ul class="sectlevel2">
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html#_introdução_10">Introdução</a>
+</li>
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html#_instruções_atômicas">Instruções atômicas</a>
+</li>
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html#_redução">Redução</a>
+</li>
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html#_quando_usar_cada_sincronização">Quando usar cada sincronização</a>
+</li>
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html#_exercício_2">Exercício</a>
+</li>
+<li><a href="paralelismo-threads-openmp-atomic-reduce.html#_relacionados_10">Relacionados</a>
+</li>
+</ul>
 </li>
 </ul>
 </div>
 </div>
 <div id="content" style="max-width: 80%;">
 <div class="sect1">
-<h2 id="pipelining-e-vetorizacao">Pipelining e Vetorização</h2>
+<h2 id="paralelismo-threads-openmp-atomic-reduce">Paralelismo por Threads com OpenMP: sincronização com atomic e reduction</h2>
 <div class="sectionbody">
 <div class="sect2">
-<h3 id="_introdução_2">Introdução</h3>
+<h3 id="_introdução_10">Introdução</h3>
 <div class="paragraph">
-<p>Se você viu a postagem anterior, pode ter se perguntando: "por que o algoritmo otimizado para matrizes alinhadas por
-coluna era mais rápido que o normal, otimizado para alinhamento por linha?" e, se fingirmos que não dá para ler o título
-desse post, poderíamos pensar ainda que o esperado era de que o algoritmo normal fosse mais rápido, visto que cada
-\(c_i\) calculado só precisava de uma lida e escrita do elemento no vetor de saída na memória a cada iteração,
-enquanto que cada elemento da saída era lido e escrito N+1 vezes no algoritmo alternativo, onde N é o número de
-elementos do vetor de saída. O que o leitor hipotético que pensou demais na quantia de acessos do vetor de saída não
-pensou, entretanto, são nas demais técnicas que os processadores empregam para acelerar o processamento de instruções.
-Neste caso, a funcionalidade central na obtenção do ganho é a de pipelining de instruções. Será abordado o funcionamento
-do pipelining e execução em blocos, para então seguirmos a vetorização/instruções SIMD, compiladores e assembly.</p>
-</div>
-<div class="sect3">
-<h4 id="_pipelining">Pipelining</h4>
-<div class="paragraph">
-<p>Para explicar pipelining, vale um resumo de como processadores executam instruções. Assumindo um modelo simplificado, de
-execução serial da instruções e tempos de acesso desprezíveis, temos quatro etápas para execução de uma instrução:
-busca, decodificação, execução, e armazenamento. Durante a execução de uma instrução neste processador básico, as
-componentes relacionadas a cada etapa ou sub-etapa que não esteja sendo ativamente executada em dado ciclo do
-processador não são aproveitadas, sendo necessário a espera de toda a execução de uma instrução para o começo da
-próxima. Para solucionar este problema surge o pipelining, adicionando buffers entre as etapas/sub-etapas de execução,
-de forma que suas componentes possam ser utilizadas logo após seu uso, possibilitando a execução de múltiplas
-instruções simultaneamente em um único processador (um único core de processador, considerando multi-cores).</p>
+<p>Pracabar com essa primeira unidade, esta postagem aborda a cláusula <code>atomic</code> e a diretiva <code>reduction</code> para completar as
+1001 formas de se calcular uma variável de redução. Também pretendo apontar as diferenças tanto das cláusulas quanto
+entre essas formas quanto o uso das claúsulas/diretivas em si. Como o prazo final do relatório é daqui a algumas horas,
+não haverá experimento, mas não se preocupem: com exceção do atomic, todas os objetos de comparação já foram abordados
+ou, no mínimo, usados nos códigos. Se prepare para muitas citações neste relatório.</p>
 </div>
 <div class="paragraph">
-<p>Este multiprocessamento, entretanto, é naturalmente limitado pela ordem de execução das instruções e suas
-interdependências. Não se pode realizar uma operação baseada no resultado de outra que ainda não foi armazenada, por
-exemplo. Para remediar isso tanto processadores quanto compiladores procuram otimizar a ordem de execução das instruções
-para maximizar o aproveitamento do pipelining sem alterar o "espírito" do código. No contexto do produto entre matriz e
-vetor apresentado na última postagem, a implementação para matrizes alinhadas por linha tinha a dependência da conclusão
-de todas as multiplicações entre elementos anteriores do vetor linha e vetor de entrada E seus respectivos incrementos
-no elemento do vetor de saída para que se pudesse incrementar o resultado da multiplicação seguinte; enquanto que o
-algoritmo otimizado para matrizes alinhadas conseguia começar a ponderação do vetor coluna por seu respectivo escalar do
-vetor de entrada e seu incremento ao vetor de saída independentemente.</p>
-</div>
-<div class="paragraph">
-<p>A execução de múltiplas instruções independentes entre si ao mesmo tempo por pipelining foi um avanço significante no
-desempenho de processadores (que conforme será mostrado, ainda rende muita performance atualmente) que não é fruto
-direto de melhorias no processo de fabricação (diminuição do tamanho de transistores, empacotamento, e outros
-contribuintes à lei de Moore e a antiga escala de Dennard), mas de avanços no design e arquitetura dos computadores.
-Não raramente, entretanto, tem-se a situação onde as várias instruções a serem executadas se tratam da mesma instrução,
-aplicada a dados diferentes — operações matriciais, como as do exemplo anterior, são casos desse tipo. Pela extensa
-presença desse padrão de processamento em aplicações numéricas, eventualmente surgiram nos supercomputadores a
-capacidade de processar múltiplos dados a partir da mesma instrução, adicionando mais componentes responsáveis pela
-execução da instrução ao processador. Daí surgiram os atualmente sumidos computadores vetoriais (veja o Fugaku para o
-mais próximo <span class="line-through">que eu sei</span> disso na atualidade) e a ideia de vetorização.</p>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_vetorização">Vetorização</h4>
-<div class="paragraph">
-<p>Como no final da sessão acima, a vetorização se dá pela execução simultânea de uma instrução sobre diferentes dados.
-Mais especificamente, se tratam de instruções que operam sobre registradores especiais (especiais, mas que podem ser
-usados como registradores normais) capazes de abrigar múltiplos dados de forma que os dados contidos nestes
-registradores sejam processados paralelamente. As restrições sofridas no pipelining são herdadas pela vetorização, ainda
-acrescidas de fatores como a limitação de operações possíveis de se vetorizar e a responsabilidade pelo lado da
-aplicação de aplicar as instruções. Este último, conforme novos padrões de instruções vetoriais são lançados, conflita
-com objetivos como o reaproveitamento de programas compilados em múltiplas máquinas, para além de exigir esforços de
-desenvolvimento para integração dessas instruções em compiladores, interpretadores (ainda que td seja JIT) ou, quando
-as heurísticas desses dois não funcionam, na aplicação (a máxima disso é o ffmpeg, onde adoram falar que fazem isso).</p>
-</div>
+<p>Para clarificação, vamos ilustrar como o programa estimador de \(\pi\) apresentado em "Paralelismo por Threads
+com OpenMP: Escopo e seções críticas" usaria essas ferramentas.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_experimento">Experimento</h3>
+<h3 id="_instruções_atômicas">Instruções atômicas</h3>
 <div class="paragraph">
-<p>Para demonstrar o efeito de otimizar um código para usar pipelining e/ou vetorização, poderíamos pegar o algoritmo
-convencional de multiplicação matriz-vetor da postagem passada, implementá-lo com o que vou explicar ser "desenrolamento
-de loop", e comparar com o orignal e o algoritmo alternativo para colunas. O requisito da atividade pede outra coisa,
-então isso fica de exercício para o leitor. Para demonstrar o efeito de otimizar um código para usar pipelining e/ou
-vetorização, vamos fazer uma comparação simples com implementações de uma função que retorne a soma de todos os valores
-de um vetor (e também com o tempo que demora para preenchê-lo com algum cálculo simples). A forma mais simples desse
-algoritmo se resume a criar uma variável (acumulador) inicializada em zero e iterar pelo vetor somando à variável o
-valor de cada elemento. Aqui, como no §2 de Pipelining, cada instrução de incremento do valor de um elemento ao
-acumulador é dependente da resolução dessa instrução com os elementos anteriores, impossibilitando o aproveitamento do
-pipelining e/ou vetorização.</p>
+<p>Instruções atômicas foi muitíssimo recentemente abordado nestas postagens (na postagem anterior!) Então vamos trazer sua
+definição de lá:</p>
+</div>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>(&#8230;&#8203;)</p>
 </div>
 <div class="paragraph">
-<p>Para solucionar isso, podemos "desenrolar" o loop, reduzindo o número de iterações e adicionando, em cada iteração, o
-processamento de mais elementos. Para isso, vamos transformar algumas coisas: ao invés de iterar por elementos do vetor,
-vamos considerar iterar por blocos do vetor, onde cada bloco equivale a um determinado número de elementos. Assumindo
-que o tamanho do vetor é divisível exatamente pelo tamanho do bloco, iterar por R blocos do vetor (sendo R a razão entre
-o tamanho do vetor e o tamanho do bloco) e realizar a operação para cada elemento do vetor. Para a soma dos elementos do
-vetor por um elemento de cada vez (que também poderia ser entendido como um bloco de tamanho 1), temos algo como:</p>
+<p>Para garantir que não haja leitura e escrita simultânea, a solução veio por hardware, através de
+instruções atômicas. Estas instruções são, por definição, ininterruptíveis e indivisíveis, garantindo que cada instrução
+do tipo sobre um determinado recurso seja executado uma de cada vez.</p>
+</div>
+</blockquote>
+<div class="attribution">
+&#8212; Paralelismo por Threads com OpenMP: sincronização com critical e locks
+</div>
+</div>
+<div class="paragraph">
+<p>Lá mencionávamos o uso da instrução atômica <em>test-and-set</em> para acquisição de <em>locks</em>, mas ela está longe de ser a única
+instrução atômica útil. Tal qual podemos usar instruções atômicas para pegar a <em>lock</em> de um espaço de memória para
+sincronizar sua interação, podemos usar instruções atômicas para interagir diretamente sobre este espaço. Para operações
+simples, este processo pode ser proveitoso: não haveria mais o custo de acquisição da lock, em troca do comumente menor
+overhead da execução atômica da operação. Vale notar, entretanto, que as operações atômicas em um mesmo dado são
+operadas como em uma FIFO, e o uso sucessivo de instruções atômicas no código não implica na sua execução em sequência.
+Ainda nessa visão de fila, vale ressaltar que a ordem de execução só é garantida entre operações atômicas, i.e., se você
+acessar normalmente uma variável em uma thread enquanto outra a acessa atomicamente, tanto o acesso normal não é
+interrompido/impedido/atrasado quanto o acesso atômico pode ser sobrescrito ou baseado em um dado desatualizado.</p>
+</div>
+<div class="paragraph">
+<p>Se quiséssemos substituir a seção <code>critical</code> que faz a redução de <code>hit_count</code> na estimativa estocástica de
+\(\pi\) que já mencionei, teríamos o seguinte código:</p>
 </div>
 <div class="listingblock">
-<div class="title">Exemplo de soma um a um para um vetor de inteiros (int)</div>
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">int somar_tudo(int* vetor_in, int tamanho){
-    int resultado = 0;
-    for (int i = 0; i &lt; tamanho; i++){
-        resultado += vetor_in[i];
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data estimate_pi_parallel_atomic(unsigned long total_samples, unsigned long num_threads){
+
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    unsigned long local_hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i &lt; total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    local_hit_count++;
+            }
+        }
+        #pragma omp atomic
+            hit_count = hit_count+local_hit_count;
     }
-    return resultado;
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
 }</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>Enquanto que, fazendo para um bloco de tamanho 2, teríamos:</p>
+<p>Com os únicos ganhos a se ter serem pelo enfileiramento das instruções atômicas ao invés do enfileiramento de
+acquisições de lock.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_redução">Redução</h3>
+<div class="quoteblock">
+<blockquote>
+<div class="paragraph">
+<p>(&#8230;&#8203;) temos uma oportunidade para o <code>hit_count</code>: se somente usássemos <code>critical</code> na instrução de incremento do
+<code>hit_count</code>, estaríamos tornando parte de cada processamento de amostra sequencial, aproximando mais o tempo de execução
+paralelo ao sequencial. Se introduzíssemos uma variável privada para contabilizar os pontos dentro do círculo em cada
+thread e somássemos o valor dessa variável em cada thread ao valor total, teríamos uma paralelização completa das
+iterações às custas de uma operação sequencial adicional para cada thread. Este conceito específico são de variáveis de
+redução, e apesar do OpenMP já disponibilizar uma cláusula para declaração desse tipo de variável (e sua operação de
+redução), vamos fazê-la com essa variável adicional e redução à mão para fins didáticos.</p>
+</div>
+</blockquote>
+<div class="attribution">
+&#8212; Paralelismo por Threads com OpenMP: Escopo e seções críticas
+</div>
+</div>
+<div class="paragraph">
+<p>Enfim chegou a vez de falar do <code>reduction</code>. Se você já mexeu com Hadoop ou bibliotecas/ferramentas de processamento
+vetorial, provavelmente já ouviu falar de <code>reduction</code>. Se você leu o relatório da citação que está logo a cima deste
+parágrafo (ou a própria citação), você também já ouviu falar de <code>reduction</code> e esse início de sessão fica mais sem sentido.
+De qualquer forma, quando desejamos aplicar uma operação a um conjunto de dados que possa ser formulada como a
+composição dessa operação com ela mesma aplicada a diferentes operações, queremos fazer uma redução sobre este conjunto
+de dados (não tô sabendo falar, mas a equação abaixo descreve com um conjunto G de escalares e uma função redutível f
+que mapeia o conjunto potência de G a um escalar de uma forma desnecessariamente complicada para o que poderia ser "se a
+função é binária e associativa ela é redutível").</p>
+</div>
+<div class="stemblock">
+<div class="content">
+\[G : \{g_1, g_2, g_3, \ldots\};\\
+f : f(G) = f({f(H),f(J)}), \text{ com } H \cup J = G,\ H \cap J = \emptyset\]
+</div>
+</div>
+<div class="paragraph">
+<p>Como essa operação é tão comum no processamento paralelo de dados, o OpenMP provê a cláusula <code>reduction</code> para realização
+de reduções. Ela é usada nas diretivas de seções paralelas para definir uma lista de variáveis de redução e suas
+operações, que podem ser tanto as disponibilizadas por padrão (como soma, máximo, E lógico bit a bit) quanto funções
+criadas pelo desenvolvedor (para essas você terá que usar <code>pragma omp declare reduction</code> antes), lidando com o escopo
+dos dados e sincronização entre threads para cálculo do valor ao final da seção. Se fizéssemos a <code>estimate_pi_parallel</code>
+com redução, teríamos o seguinte código:</p>
 </div>
 <div class="listingblock">
-<div class="title">Exemplo de soma em bloco de tamanho 2 para um vetor de inteiros (int)</div>
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">int somar_tudo_bloco_2(int* vetor_in, int tamanho){
-    int acumulador1 = 0;
-    int acumulador2 = 0;
-    int resultado = 0;
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data estimate_pi_parallel_atomic(unsigned long total_samples, unsigned long num_threads){
 
-    int i = 0; //declarando o i fora do loop para reaproveitar ele pro resto da divisão
-    //você só pode passar esse (2-1) pro lado direito da inequação se usar inteiro sinalado (besteira de impl.)
-    for (; i + (2 - 1) &lt; tamanho; i += 2){
-        acumulador1 += vetor_in[i];
-        acumulador2 += vetor_in[i+1];
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution&lt;&gt; sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) reduction(hit_count:+)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i &lt; total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    hit_count++;
+            }
+        }
     }
-    //tratando o resto da divisão um a um
-    for (; i &lt; tamanho; i++){
-        resultado += vetor_in[i];
-    }
-    resultado += acumulador1 + acumulador2;
-    return resultado;
+
+    res = (4*hit_count)/static_cast&lt;double&gt;(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
 }</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>Extra: antes de todas essas considerações de pipelining e vetorização, já havia um tradeoff entre o overhead do loop
-(execução dos jumps e checagem da condição de parada para cada iteração) e o tamanho do programa compilado, numa
-situação parecida com o balanceamento do uso de funções inline. A lógica do loop aí dependeria da resolução do acesso ao
-vetor para que possa começar sua execução, então boa parte desse impacto seria amortecido pelo pipelining com a soma ao
-acumulador. Enquanto que isso é especulação minha, você pode gerar o assembly no gcc com o parâmetro -S, jogar em um
-simulador de processador com pipeline (salve DrMIPS), e me mandar um e-mail dizendo se estou equivocado.</p>
-</div>
-<div class="paragraph">
-<p>Por conta do já mencionado problema de compatibilidade binária consequente dos diferentes padrões de instruções
-vetoriais por aí, compiladores como o GCC (que é o compilador padrão desses experimentos) não costumam usar vetorização
-por padrão. Aproveitando(?) isso, o experimento será repetido com as flags de otimização O0, O2 e O3, e todas com a flag
--march=native, que sinaliza para o GCC compilar o código para ser executado especificamente na arquitetura do
-processador do computador. Para avisos sobre a quando e onde ocorre vetorização, é usada a flag -fopt-info-vec, mas como
-cada função foi implementada por meio de um template, não se pode discernir qual função foi otimizada (todas apontam
-para a mesma linha, se você souber como contornar isso, por favor me avise).</p>
-</div>
-<div class="paragraph">
-<p>Para clarificação, a flag O0 desativa quase todas as otimizações, enquanto que a O2 usa todas as otimizações que não
-tenham um tradeoff entre tamanho do binário e velocidade de execução (logo não vetoriza ou desenrola loops) e a O3
-habilita as demais otimizações que ainda seriam "standard-compliant para todos os programas".</p>
+<p>Simples, não? E ainda há um bônus: tanto no relatório 6 quanto no 8 foram feitas análises de como a redução é feita para
+arbitrar por qual jeito seria melhor de se fazer a redução. Com o <code>reduction</code>, temos não só mais agilidade para resolver
+o problema, como que temos uma solução pronta próxima do ótimo — querendo ou não, boa parte da redução é um problema já
+resolvido, e as diferenças entre uma versão provida pelo compilador e uma feita pelo programador são baixas ou, pior,
+favoráveis à versão do compilador. Notadamente, a cláusula tem suas restrições, seja no número de operações, natureza da
+operação ou tipos de dados aceitos.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_resultado">Resultado</h3>
-<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
-<div id="plot_wrapper" style="display:flex; flex-direction:column">
-    <div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
-    <select id="select_plot_data" name="Dados" style="margin:auto;width:40%">
-        <option value="resources/dados_O0_filtrados.csv" selected>Compilado com -O0</option>
-        <option value="resources/dados_O2_filtrados.csv">Compilado com -O2</option>
-        <option value="resources/dados_O3_filtrados.csv">Compilado com -O3</option>
-        <option value="resources/dados_Ofast_filtrados.csv">Bônus: Compilado com -Ofast</option>
-        <option value="resources/dados_O3unlimited_filtrados.csv">Bônus: Compilado com -O3 e -fvect-cost-model=unlimited</option>
-    </select>
-</div>
-<script>
-    cache = {}
-    async function fetch_data(path){
-        var data = []
-        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
-        else{
-            const response = await fetch(path)
-            const text = await response.text()
-            const rows = text.split("\n").map(row => row.split(','))
-            var headers = rows[0]
-            const num_cols = rows[0].length
-            for (var i = 1; i < rows.length; i++){
-                if (rows[i].length != num_cols){continue}
-                var row = {}
-                for (var j = 0; j < num_cols; j++){
-                    row[headers[j]] = rows[i][j]
-                }
-                data.push(row)
-            }
-            cache[path] = data
-        }
-        processData(data, {flag: path.split('_')[1]})
-    }
-
-    function processData(allRows, extra){
-        var modes = {
-            "SINGLE":{"x":[],"y":[]},
-            "VEC_INIT":{"x":[],"y":[]},
-            "BLOCK2":{"x":[],"y":[]},
-            "BLOCK4":{"x":[],"y":[]},
-            "BLOCK8":{"x":[],"y":[]},
-            "BLOCK16":{"x":[],"y":[]},
-        }
-
-        for (var i=0; i < allRows.length; i++) {
-            row = allRows[i];
-            modes[row['MODE']]["x"].push(parseInt(row['VEC_SIZE']))
-            modes[row['MODE']]["y"].push(parseFloat(row['TIME_MS']))
-        }
-
-        var dash_types = ["longdash", "dot", "dashdot"]
-        var counter = 0
-        for (const [key, val] of Object.entries(modes)){
-            modes[key]["mode"] = "lines+markers"
-            modes[key]["type"] = "scatter"
-            modes[key]["name"] = key
-            modes[key]["line"] = {dash:dash_types[counter]}
-            counter = (counter+1)%3
-            //modes[key]["mode"] =
-            //modes[key]["mode"] =
-        }
-        document.getElementById("plot_times").innerText = ""
-        var traces = Object.values(modes)
-        Plotly.newPlot("plot_times", traces,
-            {
-                title: {text: "Vector/Array Sum-up/reduction: Time comparison between implementations", subtitle: {text: `5 samples per VEC_SIZE, float32 vectors, ran on a AMD Ryzen 5 7600, compiled with -${extra.flag}`}},
-                xaxis: {title: {text: "VEC_SIZE"}},
-                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f"},
-            }
-        )
-    }
-    const select = document.getElementById("select_plot_data")
-    fetch_data(select.value)
-    select.addEventListener("change", (event) => {fetch_data(event.target.value)})
-</script>
+<h3 id="_quando_usar_cada_sincronização">Quando usar cada sincronização</h3>
 <div class="paragraph">
-<p>Como esperado, a soma um-a-um foi a mais lenta das implementações para cada uma das flags testadas. Mais interessante
-que isso, porém, é a mudança entre tamanhos de bloco ótimos de acordo com o nível de otimização: em O0, o quão menor o
-tamanho do bloco, melhor é sua execução. Especula-se que pode ser fruto da falta de otimizações de reordenamento ou
-direcionadas ao pipelining no O0, indo de acordo com o brusco aumento de desempenho obtido em O2 em todas as
-implementações em bloco quando comparadas à singular. Pela O3 tivemos 9 vetorizações ocorrendo nas implementações. Como
-todo tamanho de bloco diferente de 1 haverá dois loops (um para os blocos e outro para o resto), pode-se assumir que
-cada versão em bloco contribuiu 2 vetorizações, indicando que a versão singular também conseguiu vetorização. Não seria
-algo inesperado, assumindo que o compilador seja capaz de fazer o desenrolamento e então a vetorização do código, mas
-indicaria uma falha nos critérios usados para decidir o tamanho do bloco utilizado, dado que o tempo de execução não viu
-melhora entre as versões O2 e O3. Para os demais, o BLOCK16 foi de igual pra igual ao BLOCK8 em O2, e se manteve o
-melhor no O3, mas algo estranho ocorreu às demais implementações em bloco: o tempo de execução aumentou no O3 em relação
-ao O2. Pode, novamente, ser uma decisão errada no critério do O3, que por padrão insere uma checagem em tempo de
-execução para avaliar se vale ou não usar vetorização.</p>
+<p>Para deixar explícito para os requisitos da atividade:</p>
 </div>
-<div class="paragraph">
-<p>Como teste, uma versão extra em 03 foi compilada sobrescrevendo o critério para sempre assumir como viável a
-vetorização, sem testes em run-time. Não foi percebido mudança significativa no desempenho. Outra execução extra
-utilizou a flag -Ofast, que completa O3 com as demais otimizações que não seriam "standard-compliant" para todos os
-programas. Nela, finalmente todas as versões diferentes da mesma função eram otimizadas à mesma velocidade, próxima ao
-obtido pela BLOCK16 em O3 (coletar mais amostras poderia ser interessante). P.S.: a causa provavel do melhor resultado
-ser com BLOCK16 é pelos registradores vetoriais de 512 bits, que conseguiriam guardar justamente 16 floats.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_relacionados_2">Relacionados</h3>
 <div class="ulist">
 <ul>
 <li>
-<p>O optimize options do GCC, você pode checar por <code>gcc --help=optimizers</code> ou pela
-<a href="https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html">página do gcc</a>.</p>
+<p>Se é uma redução, priorize usar <code>reduction</code>. Se não for possível usá-la (um tipo de redução mais complexa), então use
+<code>critical</code>;</p>
 </li>
 <li>
-<p>Em um momento considerei explicar formas com que os exemplos com matrizes poderiam ser vetorizados, usando FMA para o
-algoritmo otimizado para colunas e AVX para o algoritmo otimizado para linhas. Instruções FMA são bem na cara sobre o
-que fazem (Fused Multiply Add) e tem instruções pra encher um registrador vetorial com um único valor de boa, para o
-caso do algoritmo por linhas, por conta do acumulador único do original, você teria que somar os valores dos
-registradores entre si, e <a href="https://www.aussieai.com/book/ch30-vectorized-sum-reduction">este excerto aqui</a> chegava
-exatamente nisso usando o hadd.</p>
+<p>Se a sincronização necessária for de múltiplas instruções, use critical;</p>
+</li>
+<li>
+<p>Se não puder definir as seções críticas em tempo de compilação ou tiver padrões mais complexos de sincronização
+(locks de leitura e escrita, p.ex.), use <em>locks</em>;</p>
+</li>
+<li>
+<p>Se a sincronização for de operação em uma única variável (que também não é dependente de outras variáveis
+compartilhadas) e esta operação puder ser atômica, use atômica.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Pessoalmente não costumo usar <code>atomic</code> simplesmente por não ter muitos usos para ela que não poderiam ser resolvidos com
+<code>reduction</code>, mas tenho um péssimo costume de enxergar primeiro versões com mais seções críticas/<em>locks</em> que o
+necessário.</p>
+</div>
+<div class="paragraph">
+<p>Se você ainda lembra um pouco dos primeiros relatórios, pode se lembrar que compiladores não são perfeitos — quando e
+como aplicar otimizações não é um problema trivial, e fazer isso mantendo o funcionamento do código como pretendido é
+ainda mais desafiador. Decisões como execução em blocos, vetorização, <em>inlining</em> e similares costumam ser decididas
+através de heurísticas, estimações de custos parametrizadas pelo compilador (as vezes configuráveis ou com dicas ao
+compilador), e elas podem falhar (veja "Pipelining e Vetorização", foi necessário -OFast para que as "diferentes"
+versões alcançassem o mesmo desempenho). Para o caso da reduction, há possibilidades: a forma como a soma do reduction é
+feita pode ser otimizada, fazendo a combinação parcial do resultado das threads em paralelo, em uma soma em árvore. Esse
+tipo de soma, a depender do overhead, pode economizar tempo, mas então resta um tormento a qualquer um que possa gostar
+um pouco demais de otimização: <em>valeu o tempo/recurso humano gasto para essa otimização?</em>. Soluções especializadas a
+este nível carregam alguns problemas: os parâmetros para fazê-las valer a pena dependem tanto do problema e seu tamanho
+quanto da máquina em si, então seria necessário tanto tempo (por enquanto) humano para tal otimizações, quanto tempo
+para experimentação e ajuste dos parâmetros da otimização (este é mais fácil de automatizar). Para não chatear aqueles
+que sofrem de otimização precoce, pense quantas outras seções poderiam ser otimizadas nesse mesmo período e quanto ganho
+pode ser tido por elas, em comparação a querer fazer cegamente a própria versão otimizada de tudo.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercício_2">Exercício</h3>
+<div class="paragraph">
+<p>VOCÊ fica aí encarregado de adaptar o código da estimativa estocástica de \(\pi\). Os excertos de como ficariam
+as funções estão no texto, é uma adaptação rápida de <code>main.cpp</code> para inclusão das funções (e a capacidade de chamá-las
+pela linha de comando mexendo no mapa <code>modes</code>), adaptação da variável <code>MODES</code> no <code>teste.sh</code> para incluir o nome que você
+tiver dado aos modos, e remoção (ou adaptação) da linha 16 no <code>process_data.py</code>. Você terá um .csv com os dados base do
+experimento, outro .csv com os dados processados para uma tabela, e, na saída do script Python, o texto para a tabela já
+formatado para asciidoc, enquanto eu fico aqui com meus 28 minutos para terminar este texto, gerar o PDF e enviar para
+a tarefa.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_relacionados_10">Relacionados</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Aqui eu ativamente recomendo ver a <a href="https://www.openmp.org/spec-html/5.0/openmpsu107.html">especificação do
+reduction</a>, é o canto mais completo para reduction entre os que chequei para o post.</p>
+</li>
+<li>
+<p>Na mesma ideia, a <a href="https://www.openmp.org/spec-html/5.0/openmpsu95.html">especificação do atomic</a> para saber quais
+tipos de expressões são possíveis com atomic.</p>
 </li>
 </ul>
 </div>
 </div>
-<div class="sect2">
-<h3 id="_íntegra_dos_códigos_2">Íntegra dos códigos</h3>
-<details>
-<summary class="title">main.cpp</summary>
-<div class="content">
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-c++ hljs" data-lang="c++">#include &lt;cstdio&gt;
-#include &lt;cstdlib&gt;
-#include &lt;iostream&gt;
-#include &lt;unordered_map&gt;
-#include &lt;string&gt;
-#include &lt;cerrno&gt;
-#include &lt;concepts&gt;
-#include &lt;type_traits&gt;
-#include "utils.h"
-
-void* _checking_malloc(size_t bytesize, int line){
-    void* res = std::malloc(bytesize);
-    if (res == NULL){printf("Allocation error around ln %d\n", line); exit(1);}
-    return res;
-}
-
-#define checking_malloc(bytesize) _checking_malloc(bytesize, __LINE__)
-
-template &lt;typename T&gt;
-void print_vec(T* vec, size_t length){
-    for (auto i = 0; i &lt; length-1; i++){
-        std::cout &lt;&lt; vec[i] &lt;&lt; ", ";
-    }
-    std::cout &lt;&lt; vec[length-1] &lt;&lt; "\n";
-}
-
-enum PRINT_MODE {
-    REGULAR,
-    VECTOR,
-    CSV
-};
-
-typedef utils::_return_data&lt;float&gt; return_data;
-
-template &lt;typename T&gt;
-utils::_return_data&lt;T&gt; init_vec(T* vec_in_out, size_t vec_size){
-    
-    auto start = utils::mark_time();
-    for (size_t i = 0; i &lt; vec_size; i++){
-        vec_in_out[i] = i+i;
-        }
-    auto end = utils::mark_time();
-    return {static_cast&lt;T&gt;(0), utils::calc_time_interval_ms(start, end)};
-}
-
-template &lt;int N, typename T&gt; requires (N &gt; 0)
-static constexpr void unrolling_sum(T* accumulator_vec, T* vec_in, size_t offset){
-    if constexpr (N &gt; 1) {unrolling_sum&lt;N-1, T&gt;(accumulator_vec, vec_in, offset);}
-    accumulator_vec[N-1] += vec_in[offset + N-1];
-}
-
-template &lt;int N, typename T&gt; requires (N &gt; 0)
-static constexpr void reduce_accs(T* accumulator_vec){
-    if constexpr (N &gt; 1) {
-        accumulator_vec[N-2] += accumulator_vec[N-1];
-        reduce_accs&lt;N-1, T&gt;(accumulator_vec);
-    }
-}
-
-template &lt;typename T, int N&gt; requires std::is_arithmetic_v&lt;T&gt; &amp;&amp; (N&gt;=1)
-utils::_return_data&lt;T&gt; reduce_block(T* vec_in, size_t vec_size){    
-    T accumulators[N];
-    for (size_t i = 0; i&lt;N; i++){
-        accumulators[i] = static_cast&lt;T&gt;(0);
-    }
-    auto start = utils::mark_time();
-    size_t i = 0;
-    for (;i+N-1 &lt; vec_size; i+=N){
-        unrolling_sum&lt;N, T&gt;(accumulators, vec_in, i);
-    }
-    for (;i &lt; vec_size; i++){
-        accumulators[0] += vec_in[i];
-    }
-    reduce_accs&lt;N, T&gt;(accumulators);
-    auto end = utils::mark_time();
-    return {accumulators[0], utils::calc_time_interval_ms(start, end)};
-}
-
-typedef return_data (*target_func_ptr)(float*, size_t);
-
-std::unordered_map&lt;std::string, PRINT_MODE&gt; print_flags = {
-    {"-printCSV", CSV},
-    {"-printVec", VECTOR}
-};
-
-std::unordered_map&lt;std::string, target_func_ptr&gt; modes = {
-    {"SINGLE", reduce_block&lt;float,1&gt;},
-    {"BLOCK2",  reduce_block&lt;float, 2&gt;},
-    {"BLOCK4",  reduce_block&lt;float, 4&gt;},
-    {"BLOCK8",  reduce_block&lt;float, 8&gt;},
-    {"BLOCK16", reduce_block&lt;float, 16&gt;},
-};
-
-int main(int argc, char* argv[]){
-    PRINT_MODE print_mode = REGULAR;
-    if (argc &lt; 3){
-        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n", argv[0]);
-        printf("&lt;MODE&gt; being either SINGLE or BLOCK&lt;2 | 4 | 8 | 16&gt;\n");
-        exit(1);
-    } else{
-        if (argc &gt; 4) {
-            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n",
-                argv[4], argv[0]);
-            exit(1);
-        }
-        if (argc == 4){
-            auto temp_print = print_flags.find(argv[3]);
-            if (temp_print == print_flags.end()){
-                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n",
-                    argv[3], argv[0]);
-                exit(1);
-            }
-            print_mode = temp_print-&gt;second;
-        }
-    }
-
-    auto mode = modes.find(argv[1]);
-    if (mode == modes.end()){
-        printf("Invalid mode: %s. Choose between SINGLE or BLOCK&lt;2 | 4 | 8 | 16&gt;\n", argv[1]);
-        exit(1);
-    }
-
-    target_func_ptr func = mode-&gt;second;
-
-    size_t params[1];
-    for (auto i = 0; i &lt; 1; i++){
-        params[i] = std::strtoul(argv[2+i], NULL, 10);
-        if (params[i] == 0 || errno == ERANGE){
-            printf("Invalid parameter: %s.\n", argv[2+i]);
-            exit(1);
-        }
-    }
-
-    float* vec_in = (float*) checking_malloc(params[0]*sizeof(float));
-
-    return_data init_data = init_vec(vec_in, params[0]);
-    return_data exec_data = func(vec_in, params[0]);
-
-    switch (print_mode)
-    {
-    case VECTOR:
-        print_vec(vec_in, params[0]);
-        break;
-    case CSV:
-        printf("%s,%lu,%f\n", "VEC_INIT", params[0], init_data.time_ms);
-        printf("%s,%lu,%f\n", argv[1], params[0], exec_data.time_ms);
-        break;
-    default:
-        printf("Result value: %f; in %f ms\n", exec_data.res, exec_data.time_ms);
-        break;
-    }
-
-    free(vec_in);
-    return 0;
-}</code></pre>
-</div>
-</div>
-</div>
-</details>
-<details>
-<summary class="title">run_tests.sh</summary>
-<div class="content">
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">EXEC_FILE="./a.out"
-PYTHON_EXEC=python3
-MODES="SINGLE BLOCK2 BLOCK4 BLOCK8 BLOCK16"
-INPUT_SIZE=10
-MAX_SIZE=100000000 #10^8
-NUM_SAMPLES=5
-STEP=5
-GROWTH_FACTOR=0.5
-OUTPUT_FILE=$1
-STATUS=0
-
-if [ -z "$OUTPUT_FILE" ]
-then
-    echo "Pass the path to an output file, use: $0 &lt;path/to/output&gt;"
-    exit
-fi
-echo MODE,VEC_SIZE,TIME_MS &gt; $OUTPUT_FILE
-
-while [ "$INPUT_SIZE" -lt "$MAX_SIZE" ]
-do
-    for MODE in $MODES
-    do
-        SAMPLE=1
-        while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
-        do
-            echo running "$EXEC_FILE $MODE $INPUT_SIZE -printCSV"
-            $EXEC_FILE $MODE $INPUT_SIZE -printCSV &gt;&gt; $OUTPUT_FILE
-            STATUS=$?
-            if [ "$STATUS" -ne 0 ]
-            then
-                #intended for when the MAT_SIDE is too big for the program to allocate this much memory
-                echo Some error occurred, stopping early.
-                exit
-            fi
-            SAMPLE=$(($SAMPLE+1))
-        done
-    done
-    INPUT_SIZE=$(($INPUT_SIZE+$STEP))
-    STEP=$($PYTHON_EXEC -c "import math; print(int(max((10**math.log10($INPUT_SIZE)//10)*$GROWTH_FACTOR, $STEP)))")
-done</code></pre>
-</div>
-</div>
-</div>
-</details>
-<details>
-<summary class="title">process_data.py</summary>
-<div class="content">
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-python hljs" data-lang="python">import pandas as pd
-import matplotlib.pyplot as plt
-import sys
-
-if len(sys.argv) &lt; 4: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;")
-if len(sys.argv) &gt; 4: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;")
-
-data = pd.read_csv(sys.argv[1])
-
-data = data.groupby(['MODE', 'VEC_SIZE']).mean().reset_index()
-
-size = (16,9)
-param_cutoff = 10**9
-fig, ax = plt.subplots(figsize=size)
-
-cutoff = data[data['VEC_SIZE'] &lt; param_cutoff]
-
-for label in pd.unique(data['MODE']):
-    filtered = cutoff[cutoff['MODE']==label]
-    x = filtered['VEC_SIZE']
-    y = filtered['TIME_MS']
-    ax.plot(x, y, label=label, marker='o')
-
-ax.set_xlabel('VEC_SIZE')
-ax.set_ylabel('mean time (ms)')
-ax.set_title("5 samples per VEC_SIZE, ran on a AMD Ryzen 5 7600, compiled with -O0")
-fig.suptitle("Time comparison between algorithms")
-
-linear = True
-#linear = False
-if linear:
-    ax.set_xlim(left=cutoff['VEC_SIZE'].min(), right=cutoff['VEC_SIZE'].max())
-    ax.set_ylim(bottom=data['TIME_MS'].min())
-else:
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-ax.legend()
-plt.tight_layout()
-fig.savefig(sys.argv[2])
-data.to_csv(sys.argv[3])</code></pre>
-</div>
-</div>
-</div>
-</details>
-</div>
 </div>
 </div>
 <div class="paragraph nav-footer">
-<p>← Previous: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> | ↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a> →</p>
+<p>← Previous: <a href="paralelismo-threads-openmp-sincronizacao.html">Paralelismo por Threads com OpenMP: sincronização com critical e locks</a> | ↑ Up: <a href="index.html">Programação Paralela</a></p>
 </div>
 </div>
 <div id="footer" style="max-width: 80%;">

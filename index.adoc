@@ -53,3 +53,12 @@ include::relatorio_7/Relatorio.adoc[]
 [[extra-openmp-cache-coherency-false-sharing-thread-safety]]
 [desc="Digressão ao experimento da postagem de escopos para falar sobre coerência de cache, falso compartilhamento e thread-safety"]
 include::relatorio_8/Relatorio.adoc[]
+
+:imagesdir: relatorio_9/resources
+[[paralelismo-threads-openmp-sincronizacao]]
+[desc="Sobre sincronização em memória comparilhada com OpenMP, mais especificamente seções críticas e locks"]
+include::relatorio_9/Relatorio.adoc[]
+
+[[paralelismo-threads-openmp-atomic-reduce]]
+[desc="Sobre instruções atômicas com a diretiva atomic e reduções com a cláusula reduction, e uma geral das sincronizações"]
+include::relatorio_10/Relatorio.adoc[]

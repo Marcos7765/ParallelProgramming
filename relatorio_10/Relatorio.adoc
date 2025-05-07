@@ -1,0 +1,196 @@
+== Paralelismo por Threads com OpenMP: sincronização com atomic e reduction
+:stem: latexmath
+=== Introdução
+Pracabar com essa primeira unidade, esta postagem aborda a cláusula `atomic` e a diretiva `reduction` para completar as
+1001 formas de se calcular uma variável de redução. Também pretendo apontar as diferenças tanto das cláusulas quanto
+entre essas formas quanto o uso das claúsulas/diretivas em si. Como o prazo final do relatório é daqui a algumas horas,
+não haverá experimento, mas não se preocupem: com exceção do atomic, todas os objetos de comparação já foram abordados
+ou, no mínimo, usados nos códigos. Se prepare para muitas citações neste relatório.
+
+Para clarificação, vamos ilustrar como o programa estimador de latexmath:[\pi] apresentado em "Paralelismo por Threads
+com OpenMP: Escopo e seções críticas" usaria essas ferramentas.
+
+=== Instruções atômicas
+
+Instruções atômicas foi muitíssimo recentemente abordado nestas postagens (na postagem anterior!) Então vamos trazer sua
+definição de lá:
+
+[quote, Paralelismo por Threads com OpenMP: sincronização com critical e locks]
+____
+(...)
+
+Para garantir que não haja leitura e escrita simultânea, a solução veio por hardware, através de
+instruções atômicas. Estas instruções são, por definição, ininterruptíveis e indivisíveis, garantindo que cada instrução
+do tipo sobre um determinado recurso seja executado uma de cada vez.
+____
+
+Lá mencionávamos o uso da instrução atômica _test-and-set_ para acquisição de _locks_, mas ela está longe de ser a única
+instrução atômica útil. Tal qual podemos usar instruções atômicas para pegar a _lock_ de um espaço de memória para
+sincronizar sua interação, podemos usar instruções atômicas para interagir diretamente sobre este espaço. Para operações
+simples, este processo pode ser proveitoso: não haveria mais o custo de acquisição da lock, em troca do comumente menor
+overhead da execução atômica da operação. Vale notar, entretanto, que as operações atômicas em um mesmo dado são
+operadas como em uma FIFO, e o uso sucessivo de instruções atômicas no código não implica na sua execução em sequência.
+Ainda nessa visão de fila, vale ressaltar que a ordem de execução só é garantida entre operações atômicas, i.e., se você
+acessar normalmente uma variável em uma thread enquanto outra a acessa atomicamente, tanto o acesso normal não é
+interrompido/impedido/atrasado quanto o acesso atômico pode ser sobrescrito ou baseado em um dado desatualizado.
+
+Se quiséssemos substituir a seção `critical` que faz a redução de `hit_count` na estimativa estocástica de
+latexmath:[\pi] que já mencionei, teríamos o seguinte código:
+
+[source, cpp]
+----
+return_data estimate_pi_parallel_atomic(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    unsigned long local_hit_count = 0;
+    double res;
+    std::uniform_real_distribution<> sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) firstprivate(local_hit_count)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i < total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    local_hit_count++;
+            }
+        }
+        #pragma omp atomic
+            hit_count = hit_count+local_hit_count;
+    }
+
+    res = (4*hit_count)/static_cast<double>(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+Com os únicos ganhos a se ter serem pelo enfileiramento das instruções atômicas ao invés do enfileiramento de
+acquisições de lock.
+
+=== Redução
+
+[quote, Paralelismo por Threads com OpenMP: Escopo e seções críticas]
+____
+(...) temos uma oportunidade para o `hit_count`: se somente usássemos `critical` na instrução de incremento do
+`hit_count`, estaríamos tornando parte de cada processamento de amostra sequencial, aproximando mais o tempo de execução
+paralelo ao sequencial. Se introduzíssemos uma variável privada para contabilizar os pontos dentro do círculo em cada
+thread e somássemos o valor dessa variável em cada thread ao valor total, teríamos uma paralelização completa das
+iterações às custas de uma operação sequencial adicional para cada thread. Este conceito específico são de variáveis de
+redução, e apesar do OpenMP já disponibilizar uma cláusula para declaração desse tipo de variável (e sua operação de
+redução), vamos fazê-la com essa variável adicional e redução à mão para fins didáticos.
+____
+
+Enfim chegou a vez de falar do `reduction`. Se você já mexeu com Hadoop ou bibliotecas/ferramentas de processamento
+vetorial, provavelmente já ouviu falar de `reduction`. Se você leu o relatório da citação que está logo a cima deste
+parágrafo (ou a própria citação), você também já ouviu falar de `reduction` e esse início de sessão fica mais sem sentido.
+De qualquer forma, quando desejamos aplicar uma operação a um conjunto de dados que possa ser formulada como a
+composição dessa operação com ela mesma aplicada a diferentes operações, queremos fazer uma redução sobre este conjunto
+de dados (não tô sabendo falar, mas a equação abaixo descreve com um conjunto G de escalares e uma função redutível f
+que mapeia o conjunto potência de G a um escalar de uma forma desnecessariamente complicada para o que poderia ser "se a
+função é binária e associativa ela é redutível").
+
+[stem]
+++++
+G : \{g_1, g_2, g_3, \ldots\};\\
+f : f(G) = f({f(H),f(J)}), \text{ com } H \cup J = G,\ H \cap J = \emptyset
+++++
+
+Como essa operação é tão comum no processamento paralelo de dados, o OpenMP provê a cláusula `reduction` para realização
+de reduções. Ela é usada nas diretivas de seções paralelas para definir uma lista de variáveis de redução e suas
+operações, que podem ser tanto as disponibilizadas por padrão (como soma, máximo, E lógico bit a bit) quanto funções
+criadas pelo desenvolvedor (para essas você terá que usar `pragma omp declare reduction` antes), lidando com o escopo
+dos dados e sincronização entre threads para cálculo do valor ao final da seção. Se fizéssemos a `estimate_pi_parallel`
+com redução, teríamos o seguinte código:
+
+[source, cpp]
+----
+return_data estimate_pi_parallel_atomic(unsigned long total_samples, unsigned long num_threads){
+    
+    auto start = utils::mark_time();
+    unsigned long hit_count = 0;
+    double res;
+    std::uniform_real_distribution<> sampler(-1.,1.);
+    std::mt19937 generator;
+    #pragma omp parallel num_threads(num_threads) default(none) shared(res, sampler, hit_count, total_samples) private(generator) reduction(hit_count:+)
+    {
+        std::random_device::result_type seed;
+        #pragma omp critical
+        {
+            seed = std::random_device()();
+        }
+        generator.seed(seed);
+        #pragma omp for
+        for (unsigned long i = 0; i < total_samples; i++){
+            if (unitary_circle_collision(sampler(generator), sampler(generator))){
+                    hit_count++;
+            }
+        }
+    }
+
+    res = (4*hit_count)/static_cast<double>(total_samples);
+    auto end = utils::mark_time();
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+Simples, não? E ainda há um bônus: tanto no relatório 6 quanto no 8 foram feitas análises de como a redução é feita para
+arbitrar por qual jeito seria melhor de se fazer a redução. Com o `reduction`, temos não só mais agilidade para resolver
+o problema, como que temos uma solução pronta próxima do ótimo — querendo ou não, boa parte da redução é um problema já
+resolvido, e as diferenças entre uma versão provida pelo compilador e uma feita pelo programador são baixas ou, pior,
+favoráveis à versão do compilador. Notadamente, a cláusula tem suas restrições, seja no número de operações, natureza da
+operação ou tipos de dados aceitos.
+
+=== Quando usar cada sincronização
+
+Para deixar explícito para os requisitos da atividade:
+
+- Se é uma redução, priorize usar `reduction`. Se não for possível usá-la (um tipo de redução mais complexa), então use
+`critical`;
+- Se a sincronização necessária for de múltiplas instruções, use critical;
+- Se não puder definir as seções críticas em tempo de compilação ou tiver padrões mais complexos de sincronização 
+(locks de leitura e escrita, p.ex.), use _locks_;
+- Se a sincronização for de operação em uma única variável (que também não é dependente de outras variáveis
+compartilhadas) e esta operação puder ser atômica, use atômica.
+
+Pessoalmente não costumo usar `atomic` simplesmente por não ter muitos usos para ela que não poderiam ser resolvidos com
+`reduction`, mas tenho um péssimo costume de enxergar primeiro versões com mais seções críticas/_locks_ que o
+necessário.
+
+Se você ainda lembra um pouco dos primeiros relatórios, pode se lembrar que compiladores não são perfeitos — quando e
+como aplicar otimizações não é um problema trivial, e fazer isso mantendo o funcionamento do código como pretendido é
+ainda mais desafiador. Decisões como execução em blocos, vetorização, _inlining_ e similares costumam ser decididas
+através de heurísticas, estimações de custos parametrizadas pelo compilador (as vezes configuráveis ou com dicas ao
+compilador), e elas podem falhar (veja "Pipelining e Vetorização", foi necessário -OFast para que as "diferentes"
+versões alcançassem o mesmo desempenho). Para o caso da reduction, há possibilidades: a forma como a soma do reduction é
+feita pode ser otimizada, fazendo a combinação parcial do resultado das threads em paralelo, em uma soma em árvore. Esse
+tipo de soma, a depender do overhead, pode economizar tempo, mas então resta um tormento a qualquer um que possa gostar
+um pouco demais de otimização: _valeu o tempo/recurso humano gasto para essa otimização?_. Soluções especializadas a
+este nível carregam alguns problemas: os parâmetros para fazê-las valer a pena dependem tanto do problema e seu tamanho
+quanto da máquina em si, então seria necessário tanto tempo (por enquanto) humano para tal otimizações, quanto tempo
+para experimentação e ajuste dos parâmetros da otimização (este é mais fácil de automatizar). Para não chatear aqueles
+que sofrem de otimização precoce, pense quantas outras seções poderiam ser otimizadas nesse mesmo período e quanto ganho
+pode ser tido por elas, em comparação a querer fazer cegamente a própria versão otimizada de tudo.
+
+=== Exercício
+VOCÊ fica aí encarregado de adaptar o código da estimativa estocástica de latexmath:[\pi]. Os excertos de como ficariam
+as funções estão no texto, é uma adaptação rápida de `main.cpp` para inclusão das funções (e a capacidade de chamá-las
+pela linha de comando mexendo no mapa `modes`), adaptação da variável `MODES` no `teste.sh` para incluir o nome que você
+tiver dado aos modos, e remoção (ou adaptação) da linha 16 no `process_data.py`. Você terá um .csv com os dados base do
+experimento, outro .csv com os dados processados para uma tabela, e, na saída do script Python, o texto para a tabela já
+formatado para asciidoc, enquanto eu fico aqui com meus 28 minutos para terminar este texto, gerar o PDF e enviar para
+a tarefa.
+
+
+=== Relacionados
+
+- Aqui eu ativamente recomendo ver a link:https://www.openmp.org/spec-html/5.0/openmpsu107.html[especificação do
+reduction], é o canto mais completo para reduction entre os que chequei para o post.
+- Na mesma ideia, a link:https://www.openmp.org/spec-html/5.0/openmpsu95.html[especificação do atomic] para saber quais
+tipos de expressões são possíveis com atomic.

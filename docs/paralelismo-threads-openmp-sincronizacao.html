@@ -440,7 +440,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
              .nav-footer{text-align: center; margin-top: auto;}
              .nav-footer > p > a {white-space: nowrap;}</style>
 </head>
-<body id="pipelining-e-vetorizacao" class="book toc2 toc-left text-justify">
+<body id="paralelismo-threads-openmp-sincronizacao" class="book toc2 toc-left text-justify">
 <div id="header" style="max-width: 80%;">
 <h1>Programação Paralela</h1>
 <div class="details">
@@ -452,19 +452,7 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 <p><span class="toc-root"><a href="index.html">Programação Paralela</a></span></p><ul class="sectlevel1">
 <li><a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a>
 </li>
-<li><a href="pipelining-e-vetorizacao.html"><span class="toc-current">Pipelining e Vetorização</span></a>
-<ul class="sectlevel2">
-<li><a href="pipelining-e-vetorizacao.html#_introdução_2">Introdução</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_experimento">Experimento</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_resultado">Resultado</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_relacionados_2">Relacionados</a>
-</li>
-<li><a href="pipelining-e-vetorizacao.html#_íntegra_dos_códigos_2">Íntegra dos códigos</a>
-</li>
-</ul>
+<li><a href="pipelining-e-vetorizacao.html">Pipelining e Vetorização</a>
 </li>
 <li><a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a>
 </li>
@@ -478,7 +466,19 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </li>
 <li><a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html">Extra: detalhando coerência de cache, falso compartilhamento e thread-safety</a>
 </li>
-<li><a href="paralelismo-threads-openmp-sincronizacao.html">Paralelismo por Threads com OpenMP: sincronização com critical e locks</a>
+<li><a href="paralelismo-threads-openmp-sincronizacao.html"><span class="toc-current">Paralelismo por Threads com OpenMP: sincronização com critical e locks</span></a>
+<ul class="sectlevel2">
+<li><a href="paralelismo-threads-openmp-sincronizacao.html#_introdução_9">Introdução</a>
+</li>
+<li><a href="paralelismo-threads-openmp-sincronizacao.html#_seções_críticas">Seções críticas</a>
+</li>
+<li><a href="paralelismo-threads-openmp-sincronizacao.html#_exercício">Exercício</a>
+</li>
+<li><a href="paralelismo-threads-openmp-sincronizacao.html#_relacionados_9">Relacionados</a>
+</li>
+<li><a href="paralelismo-threads-openmp-sincronizacao.html#_íntegra_dos_códigos_8">Íntegra dos códigos</a>
+</li>
+</ul>
 </li>
 <li><a href="paralelismo-threads-openmp-atomic-reduce.html">Paralelismo por Threads com OpenMP: sincronização com atomic e reduction</a>
 </li>
@@ -487,393 +487,563 @@ body.book #toc,body.book #preamble,body.book h1.sect0,body.book .sect1>h2{page-b
 </div>
 <div id="content" style="max-width: 80%;">
 <div class="sect1">
-<h2 id="pipelining-e-vetorizacao">Pipelining e Vetorização</h2>
+<h2 id="paralelismo-threads-openmp-sincronizacao">Paralelismo por Threads com OpenMP: sincronização com critical e locks</h2>
 <div class="sectionbody">
 <div class="sect2">
-<h3 id="_introdução_2">Introdução</h3>
+<h3 id="_introdução_9">Introdução</h3>
 <div class="paragraph">
-<p>Se você viu a postagem anterior, pode ter se perguntando: "por que o algoritmo otimizado para matrizes alinhadas por
-coluna era mais rápido que o normal, otimizado para alinhamento por linha?" e, se fingirmos que não dá para ler o título
-desse post, poderíamos pensar ainda que o esperado era de que o algoritmo normal fosse mais rápido, visto que cada
-\(c_i\) calculado só precisava de uma lida e escrita do elemento no vetor de saída na memória a cada iteração,
-enquanto que cada elemento da saída era lido e escrito N+1 vezes no algoritmo alternativo, onde N é o número de
-elementos do vetor de saída. O que o leitor hipotético que pensou demais na quantia de acessos do vetor de saída não
-pensou, entretanto, são nas demais técnicas que os processadores empregam para acelerar o processamento de instruções.
-Neste caso, a funcionalidade central na obtenção do ganho é a de pipelining de instruções. Será abordado o funcionamento
-do pipelining e execução em blocos, para então seguirmos a vetorização/instruções SIMD, compiladores e assembly.</p>
+<p>O assunto da vez é sincronização, dessa vez, em uma postagem dedicada — porque é bem difícil de se encontrar um problema
+paralelo interessante que não precise dela. Certas operações são fundamentalmente seriais, com condições que não podem
+ser garantidas enquanto houver possibilidade de modificação de parte alguma do objeto ao qual elas se aplicam
+(isso quando o objeto pode ser dividido). É a mesma ideia abordada anteriormente na seção de thread-safety em "Extra: detalhando coerência de cache, falso compartilhamento e thread-safety", mas vale diferenciar duas formas de se alcançar
+a thread safety para poder mostrar a importância da sincronização. Para contexto:</p>
 </div>
-<div class="sect3">
-<h4 id="_pipelining">Pipelining</h4>
+<div class="quoteblock">
+<blockquote>
 <div class="paragraph">
-<p>Para explicar pipelining, vale um resumo de como processadores executam instruções. Assumindo um modelo simplificado, de
-execução serial da instruções e tempos de acesso desprezíveis, temos quatro etápas para execução de uma instrução:
-busca, decodificação, execução, e armazenamento. Durante a execução de uma instrução neste processador básico, as
-componentes relacionadas a cada etapa ou sub-etapa que não esteja sendo ativamente executada em dado ciclo do
-processador não são aproveitadas, sendo necessário a espera de toda a execução de uma instrução para o começo da
-próxima. Para solucionar este problema surge o pipelining, adicionando buffers entre as etapas/sub-etapas de execução,
-de forma que suas componentes possam ser utilizadas logo após seu uso, possibilitando a execução de múltiplas
-instruções simultaneamente em um único processador (um único core de processador, considerando multi-cores).</p>
+<p>A thread-safety de uma função se refere à capacidade de execução dessa função de forma concorrente/e ou paralela
+conforme pretendido. Uma função que possa chegar a um estado de erro por múltiplas execuções simultâneas não pode ser
+chamada de thread-safe&#8230;&#8203;</p>
 </div>
 <div class="paragraph">
-<p>Este multiprocessamento, entretanto, é naturalmente limitado pela ordem de execução das instruções e suas
-interdependências. Não se pode realizar uma operação baseada no resultado de outra que ainda não foi armazenada, por
-exemplo. Para remediar isso tanto processadores quanto compiladores procuram otimizar a ordem de execução das instruções
-para maximizar o aproveitamento do pipelining sem alterar o "espírito" do código. No contexto do produto entre matriz e
-vetor apresentado na última postagem, a implementação para matrizes alinhadas por linha tinha a dependência da conclusão
-de todas as multiplicações entre elementos anteriores do vetor linha e vetor de entrada E seus respectivos incrementos
-no elemento do vetor de saída para que se pudesse incrementar o resultado da multiplicação seguinte; enquanto que o
-algoritmo otimizado para matrizes alinhadas conseguia começar a ponderação do vetor coluna por seu respectivo escalar do
-vetor de entrada e seu incremento ao vetor de saída independentemente.</p>
+<p>(&#8230;&#8203;)</p>
 </div>
 <div class="paragraph">
-<p>A execução de múltiplas instruções independentes entre si ao mesmo tempo por pipelining foi um avanço significante no
-desempenho de processadores (que conforme será mostrado, ainda rende muita performance atualmente) que não é fruto
-direto de melhorias no processo de fabricação (diminuição do tamanho de transistores, empacotamento, e outros
-contribuintes à lei de Moore e a antiga escala de Dennard), mas de avanços no design e arquitetura dos computadores.
-Não raramente, entretanto, tem-se a situação onde as várias instruções a serem executadas se tratam da mesma instrução,
-aplicada a dados diferentes — operações matriciais, como as do exemplo anterior, são casos desse tipo. Pela extensa
-presença desse padrão de processamento em aplicações numéricas, eventualmente surgiram nos supercomputadores a
-capacidade de processar múltiplos dados a partir da mesma instrução, adicionando mais componentes responsáveis pela
-execução da instrução ao processador. Daí surgiram os atualmente sumidos computadores vetoriais (veja o Fugaku para o
-mais próximo <span class="line-through">que eu sei</span> disso na atualidade) e a ideia de vetorização.</p>
+<p>O princípio para uma função não ser thread-safe é simples: manipulação concorrente de um recurso sem as devidas
+precauções para condições de corrida&#8230;&#8203;</p>
 </div>
-</div>
-<div class="sect3">
-<h4 id="_vetorização">Vetorização</h4>
-<div class="paragraph">
-<p>Como no final da sessão acima, a vetorização se dá pela execução simultânea de uma instrução sobre diferentes dados.
-Mais especificamente, se tratam de instruções que operam sobre registradores especiais (especiais, mas que podem ser
-usados como registradores normais) capazes de abrigar múltiplos dados de forma que os dados contidos nestes
-registradores sejam processados paralelamente. As restrições sofridas no pipelining são herdadas pela vetorização, ainda
-acrescidas de fatores como a limitação de operações possíveis de se vetorizar e a responsabilidade pelo lado da
-aplicação de aplicar as instruções. Este último, conforme novos padrões de instruções vetoriais são lançados, conflita
-com objetivos como o reaproveitamento de programas compilados em múltiplas máquinas, para além de exigir esforços de
-desenvolvimento para integração dessas instruções em compiladores, interpretadores (ainda que td seja JIT) ou, quando
-as heurísticas desses dois não funcionam, na aplicação (a máxima disso é o ffmpeg, onde adoram falar que fazem isso).</p>
-</div>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_experimento">Experimento</h3>
-<div class="paragraph">
-<p>Para demonstrar o efeito de otimizar um código para usar pipelining e/ou vetorização, poderíamos pegar o algoritmo
-convencional de multiplicação matriz-vetor da postagem passada, implementá-lo com o que vou explicar ser "desenrolamento
-de loop", e comparar com o orignal e o algoritmo alternativo para colunas. O requisito da atividade pede outra coisa,
-então isso fica de exercício para o leitor. Para demonstrar o efeito de otimizar um código para usar pipelining e/ou
-vetorização, vamos fazer uma comparação simples com implementações de uma função que retorne a soma de todos os valores
-de um vetor (e também com o tempo que demora para preenchê-lo com algum cálculo simples). A forma mais simples desse
-algoritmo se resume a criar uma variável (acumulador) inicializada em zero e iterar pelo vetor somando à variável o
-valor de cada elemento. Aqui, como no §2 de Pipelining, cada instrução de incremento do valor de um elemento ao
-acumulador é dependente da resolução dessa instrução com os elementos anteriores, impossibilitando o aproveitamento do
-pipelining e/ou vetorização.</p>
-</div>
-<div class="paragraph">
-<p>Para solucionar isso, podemos "desenrolar" o loop, reduzindo o número de iterações e adicionando, em cada iteração, o
-processamento de mais elementos. Para isso, vamos transformar algumas coisas: ao invés de iterar por elementos do vetor,
-vamos considerar iterar por blocos do vetor, onde cada bloco equivale a um determinado número de elementos. Assumindo
-que o tamanho do vetor é divisível exatamente pelo tamanho do bloco, iterar por R blocos do vetor (sendo R a razão entre
-o tamanho do vetor e o tamanho do bloco) e realizar a operação para cada elemento do vetor. Para a soma dos elementos do
-vetor por um elemento de cada vez (que também poderia ser entendido como um bloco de tamanho 1), temos algo como:</p>
-</div>
-<div class="listingblock">
-<div class="title">Exemplo de soma um a um para um vetor de inteiros (int)</div>
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">int somar_tudo(int* vetor_in, int tamanho){
-    int resultado = 0;
-    for (int i = 0; i &lt; tamanho; i++){
-        resultado += vetor_in[i];
-    }
-    return resultado;
-}</code></pre>
+</blockquote>
+<div class="attribution">
+&#8212; Extra: detalhando coerência de cache<br>
+<cite>falso compartilhamento e thread-safety</cite>
 </div>
 </div>
 <div class="paragraph">
-<p>Enquanto que, fazendo para um bloco de tamanho 2, teríamos:</p>
-</div>
-<div class="listingblock">
-<div class="title">Exemplo de soma em bloco de tamanho 2 para um vetor de inteiros (int)</div>
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">int somar_tudo_bloco_2(int* vetor_in, int tamanho){
-    int acumulador1 = 0;
-    int acumulador2 = 0;
-    int resultado = 0;
-
-    int i = 0; //declarando o i fora do loop para reaproveitar ele pro resto da divisão
-    //você só pode passar esse (2-1) pro lado direito da inequação se usar inteiro sinalado (besteira de impl.)
-    for (; i + (2 - 1) &lt; tamanho; i += 2){
-        acumulador1 += vetor_in[i];
-        acumulador2 += vetor_in[i+1];
-    }
-    //tratando o resto da divisão um a um
-    for (; i &lt; tamanho; i++){
-        resultado += vetor_in[i];
-    }
-    resultado += acumulador1 + acumulador2;
-    return resultado;
-}</code></pre>
-</div>
+<p>A depender da natureza do recurso, temos três opções: atribuir a cada thread seu próprio recurso, como os geradores de
+números pseudoaleatórios de "Paralelismo por Threads com OpenMP: Escopo e seções críticas"; subdividir o recurso em
+partes acessáveis independentemente (que é basicamente a paralelização que sempre se aborda aqui); ou sincronizar o
+acesso ao recurso entre as threads. A segunda opção cai por terra assim que chegamos a um recurso indivisível, enquanto
+que a primeira opção depende da capacidade de se usar múltiplos recursos do mesmo tipo para a operação desejada: se
+quero adicionar um elemento ao fim de uma lista encadeada, criar outra lista e inserir o elemento nela não soluciona o
+problema. Resta então a sincronização como alternativa.</p>
 </div>
 <div class="paragraph">
-<p>Extra: antes de todas essas considerações de pipelining e vetorização, já havia um tradeoff entre o overhead do loop
-(execução dos jumps e checagem da condição de parada para cada iteração) e o tamanho do programa compilado, numa
-situação parecida com o balanceamento do uso de funções inline. A lógica do loop aí dependeria da resolução do acesso ao
-vetor para que possa começar sua execução, então boa parte desse impacto seria amortecido pelo pipelining com a soma ao
-acumulador. Enquanto que isso é especulação minha, você pode gerar o assembly no gcc com o parâmetro -S, jogar em um
-simulador de processador com pipeline (salve DrMIPS), e me mandar um e-mail dizendo se estou equivocado.</p>
+<p>Percebendo agora que não expliquei um conceito interessante, imagine uma carga de trabalho com uma unidade arbitrária de
+trabalho \(X\), representando o trabalho necessário para se concluir a tarefa. Executando essa carga sobre uma
+única máquina capaz de realizar \(T\) unidades de trabalho por segundo, temos um tempo de execução de
+\(\frac{X}{T}\). Fazendo uma conta de padaria, poderíamos assumir que \(N\) máquinas capazes de realizar
+\(T\) unidades de trabalho executando essa carga em paralelo teriam um tempo de execução de
+\(\frac{X}{NT}\). Já tivemos gráficos e tabelas de resultados demais para sabermos que isso não é verdade, então
+vamos apontar algumas falhas desse modelo inicial em uma das primeiras ocasiões de listagem que é fora da seção
+Relacionados:</p>
 </div>
-<div class="paragraph">
-<p>Por conta do já mencionado problema de compatibilidade binária consequente dos diferentes padrões de instruções
-vetoriais por aí, compiladores como o GCC (que é o compilador padrão desses experimentos) não costumam usar vetorização
-por padrão. Aproveitando(?) isso, o experimento será repetido com as flags de otimização O0, O2 e O3, e todas com a flag
--march=native, que sinaliza para o GCC compilar o código para ser executado especificamente na arquitetura do
-processador do computador. Para avisos sobre a quando e onde ocorre vetorização, é usada a flag -fopt-info-vec, mas como
-cada função foi implementada por meio de um template, não se pode discernir qual função foi otimizada (todas apontam
-para a mesma linha, se você souber como contornar isso, por favor me avise).</p>
-</div>
-<div class="paragraph">
-<p>Para clarificação, a flag O0 desativa quase todas as otimizações, enquanto que a O2 usa todas as otimizações que não
-tenham um tradeoff entre tamanho do binário e velocidade de execução (logo não vetoriza ou desenrola loops) e a O3
-habilita as demais otimizações que ainda seriam "standard-compliant para todos os programas".</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_resultado">Resultado</h3>
-<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
-<div id="plot_wrapper" style="display:flex; flex-direction:column">
-    <div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
-    <select id="select_plot_data" name="Dados" style="margin:auto;width:40%">
-        <option value="resources/dados_O0_filtrados.csv" selected>Compilado com -O0</option>
-        <option value="resources/dados_O2_filtrados.csv">Compilado com -O2</option>
-        <option value="resources/dados_O3_filtrados.csv">Compilado com -O3</option>
-        <option value="resources/dados_Ofast_filtrados.csv">Bônus: Compilado com -Ofast</option>
-        <option value="resources/dados_O3unlimited_filtrados.csv">Bônus: Compilado com -O3 e -fvect-cost-model=unlimited</option>
-    </select>
-</div>
-<script>
-    cache = {}
-    async function fetch_data(path){
-        var data = []
-        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
-        else{
-            const response = await fetch(path)
-            const text = await response.text()
-            const rows = text.split("\n").map(row => row.split(','))
-            var headers = rows[0]
-            const num_cols = rows[0].length
-            for (var i = 1; i < rows.length; i++){
-                if (rows[i].length != num_cols){continue}
-                var row = {}
-                for (var j = 0; j < num_cols; j++){
-                    row[headers[j]] = rows[i][j]
-                }
-                data.push(row)
-            }
-            cache[path] = data
-        }
-        processData(data, {flag: path.split('_')[1]})
-    }
-
-    function processData(allRows, extra){
-        var modes = {
-            "SINGLE":{"x":[],"y":[]},
-            "VEC_INIT":{"x":[],"y":[]},
-            "BLOCK2":{"x":[],"y":[]},
-            "BLOCK4":{"x":[],"y":[]},
-            "BLOCK8":{"x":[],"y":[]},
-            "BLOCK16":{"x":[],"y":[]},
-        }
-
-        for (var i=0; i < allRows.length; i++) {
-            row = allRows[i];
-            modes[row['MODE']]["x"].push(parseInt(row['VEC_SIZE']))
-            modes[row['MODE']]["y"].push(parseFloat(row['TIME_MS']))
-        }
-
-        var dash_types = ["longdash", "dot", "dashdot"]
-        var counter = 0
-        for (const [key, val] of Object.entries(modes)){
-            modes[key]["mode"] = "lines+markers"
-            modes[key]["type"] = "scatter"
-            modes[key]["name"] = key
-            modes[key]["line"] = {dash:dash_types[counter]}
-            counter = (counter+1)%3
-            //modes[key]["mode"] =
-            //modes[key]["mode"] =
-        }
-        document.getElementById("plot_times").innerText = ""
-        var traces = Object.values(modes)
-        Plotly.newPlot("plot_times", traces,
-            {
-                title: {text: "Vector/Array Sum-up/reduction: Time comparison between implementations", subtitle: {text: `5 samples per VEC_SIZE, float32 vectors, ran on a AMD Ryzen 5 7600, compiled with -${extra.flag}`}},
-                xaxis: {title: {text: "VEC_SIZE"}},
-                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f"},
-            }
-        )
-    }
-    const select = document.getElementById("select_plot_data")
-    fetch_data(select.value)
-    select.addEventListener("change", (event) => {fetch_data(event.target.value)})
-</script>
-<div class="paragraph">
-<p>Como esperado, a soma um-a-um foi a mais lenta das implementações para cada uma das flags testadas. Mais interessante
-que isso, porém, é a mudança entre tamanhos de bloco ótimos de acordo com o nível de otimização: em O0, o quão menor o
-tamanho do bloco, melhor é sua execução. Especula-se que pode ser fruto da falta de otimizações de reordenamento ou
-direcionadas ao pipelining no O0, indo de acordo com o brusco aumento de desempenho obtido em O2 em todas as
-implementações em bloco quando comparadas à singular. Pela O3 tivemos 9 vetorizações ocorrendo nas implementações. Como
-todo tamanho de bloco diferente de 1 haverá dois loops (um para os blocos e outro para o resto), pode-se assumir que
-cada versão em bloco contribuiu 2 vetorizações, indicando que a versão singular também conseguiu vetorização. Não seria
-algo inesperado, assumindo que o compilador seja capaz de fazer o desenrolamento e então a vetorização do código, mas
-indicaria uma falha nos critérios usados para decidir o tamanho do bloco utilizado, dado que o tempo de execução não viu
-melhora entre as versões O2 e O3. Para os demais, o BLOCK16 foi de igual pra igual ao BLOCK8 em O2, e se manteve o
-melhor no O3, mas algo estranho ocorreu às demais implementações em bloco: o tempo de execução aumentou no O3 em relação
-ao O2. Pode, novamente, ser uma decisão errada no critério do O3, que por padrão insere uma checagem em tempo de
-execução para avaliar se vale ou não usar vetorização.</p>
-</div>
-<div class="paragraph">
-<p>Como teste, uma versão extra em 03 foi compilada sobrescrevendo o critério para sempre assumir como viável a
-vetorização, sem testes em run-time. Não foi percebido mudança significativa no desempenho. Outra execução extra
-utilizou a flag -Ofast, que completa O3 com as demais otimizações que não seriam "standard-compliant" para todos os
-programas. Nela, finalmente todas as versões diferentes da mesma função eram otimizadas à mesma velocidade, próxima ao
-obtido pela BLOCK16 em O3 (coletar mais amostras poderia ser interessante). P.S.: a causa provavel do melhor resultado
-ser com BLOCK16 é pelos registradores vetoriais de 512 bits, que conseguiriam guardar justamente 16 floats.</p>
-</div>
-</div>
-<div class="sect2">
-<h3 id="_relacionados_2">Relacionados</h3>
 <div class="ulist">
 <ul>
 <li>
-<p>O optimize options do GCC, você pode checar por <code>gcc --help=optimizers</code> ou pela
-<a href="https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html">página do gcc</a>.</p>
+<p>A distribuição das cargas entre as máquinas não é instantânea, requerendo trabalho adicional para sua realização.</p>
 </li>
 <li>
-<p>Em um momento considerei explicar formas com que os exemplos com matrizes poderiam ser vetorizados, usando FMA para o
-algoritmo otimizado para colunas e AVX para o algoritmo otimizado para linhas. Instruções FMA são bem na cara sobre o
-que fazem (Fused Multiply Add) e tem instruções pra encher um registrador vetorial com um único valor de boa, para o
-caso do algoritmo por linhas, por conta do acumulador único do original, você teria que somar os valores dos
-registradores entre si, e <a href="https://www.aussieai.com/book/ch30-vectorized-sum-reduction">este excerto aqui</a> chegava
-exatamente nisso usando o hadd.</p>
+<p>As unidades de carga são discretas, então a maior parte das combinações de \(X\) e \(N\) não
+satisfazem a condição \(\frac{X}{N} \in \mathbb{N}\). Por conta disso, desequilíbrios de carga são possíveis
+mesmo entre cargas trivialmente paralelizáveis e máquinas com a mesma capacidade.</p>
+</li>
+<li>
+<p>Para cargas mais complexas, existirão partes que simplesmente não podem ser paralelizadas, como as que pretendo tratar
+nesta postagem, e relações de dependência entre partes da carga pertencentes a diferentes máquinas. Para cargas que
+não podem ser paralelizadas e são independentes da parte paralela, podemos tratá-las como um termo constante; para
+demais cargas não paralelizáveis e as relações de dependência entre cargas, é necessário comunicação, e essa comunicação
+é um trabalho por si só.</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>Juntando a considerações como máquinas com diferentes capacidades de realização de trabalho e cargas de tamanho
+variável (cuja menor unidade possível não seja igual a de outras cargas), podemos generalizar (arriscando menos erros
+de modelagem) para uma soma de contribuições de tempo de execução da forma \(t_{S} + max(t_{P_i}(N) +
+t_{C_i}(N)) + t_{B}(N)\), com \(i \in [1, N]\); \(t_{S} \rightarrow\) tempo serial; \(t_{P_i}
+\rightarrow\) tempo paralelo da máquina i; \(t_{C_i} \rightarrow\) tempo de comunicação da máquina i; e
+\(t_{B} \rightarrow\) tempo de balanceamento de carga. Em geral, a contribuição de \(t_{P_i}\) tende a
+diminuir com o aumento de N, enquanto que \(t_{B}\) e \(t_{C_i}\) se mantém ou aumentam. Esta é uma
+forma (provavelmente ineficiente) de ver as chamadas fontes de perda de desempenho associadas a programação paralela:
+balanceamento de carga e comunicação. (o desbalanceamento de carga está escondido no max, devo falar dele daqui a três
+postagens)</p>
+</div>
+<div class="paragraph">
+<p>Como, quando é necessário a sincronização, não temos como saber o progresso das demais threads, a sincronização é feita
+através da comunicação. Para isso, convencionalmente usamos da memória compartilhada para transmissão das mensagens: uma
+posição da memória é utilizada para envio e recebimento de mensagens através da escrita e leitura da posição.
+Imediatamente temos um problema: o acesso e modificação por múltiplas threads em uma mesma posição de memória é uma
+receita para problemas. Para garantir que não haja leitura e escrita simultânea, a solução veio por hardware, através de
+instruções atômicas. Estas instruções são, por definição, ininterruptíveis e indivisíveis, garantindo que cada instrução
+do tipo sobre um determinado recurso seja executado uma de cada vez (alternativamente a isso, você tem a comunicação das
+threads em espaços únicos para cada thread, processados serialmente por uma componente). Destas instruções, a instrução
+atômica para <em>test-and-set</em>, que atribui um valor a uma posição na memória e retorna seu valor anterior, foi a base para
+implementação das <em>locks</em> em computadores multiprocessados 'modernos'. Com a contextualização finalmente terminada,
+vamos seguir pro OpenMP.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_seções_críticas">Seções críticas</h3>
+<div class="paragraph">
+<p>A seção <code>critical</code> já foi mencionada previamente em "Paralelismo por Threads com OpenMP: Escopo e seções críticas", mas
+agora que temos esse mói de texto da introdução, vou descrever um pouco mais o funcionamento de <code>critical</code>: seções
+críticas, para além de permitirem apenas um único acesso ao conteúdo da seção por vez, recebem dois parâmetros
+opcionais — um identificador, tal que seções críticas com o mesmo identificador não possam ser acessadas
+simultaneamente, e uma dica para o compilador da natureza da sincronização desejada. Dado esse contexto (em especial da
+parte final da introdução), como você imaginaria que é implementada uma seção crítica? (gostou da pergunta? 'roubei' do
+professor. quebra de parágrafo pra dar suspense)</p>
+</div>
+<div class="paragraph">
+<p>A resposta é simples: por locks. Para cada identificador de seção crítica (incluindo o padrão, quando não é
+especificado) é criado uma lock em tempo de compilação e cada entrada e saída de uma seção crítica seria implementada
+pela acquisição e soltura da <em>lock</em> respectiva ao identificador da seção. Dessa forma o acesso a cada seção de um
+determinado identificador é mutualmente exclusivo entre os demais acessos a seções do mesmo id.</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_exercício">Exercício</h3>
+<div class="paragraph">
+<p>OBS.: Na leitura dos requisitos da tarefa relacionada a postagem, acabei me distraindo contextualizando o problema
+desnecessariamente e, nisso, passei batido no critério "escreva um programa que cria tarefas&#8230;&#8203;". A paralelização está
+sendo feita por <code>for</code> paralelo. Torço que, já que o assunto principal é sincronização, isso não afete muito.</p>
+</div>
+<div class="paragraph">
+<p>Para demonstrar isso, imagine um programa que recebe um valor N, fatore os números de 1 a \(4N\) e organize-os
+da seguinte forma: os números múltiplos de 2 são adicionados a uma pilha A, os números múltiplos de 3 são adicionados a
+uma pilha B, e os demais números são descartados. No final do programa, os elementos de cada fila são impressos em ordem
+decrescente. Pela descrição, a implementação serial é simples (e não é muito diferente de quando fizemos contagem de
+primos). Para programas paralelos, entretanto, não podemos ter múltiplas escritas simultâneas nas filas, fazendo-se
+necessário um mecanismo de sincronização. Aproveitando que já fomos devidamente apresentados a seções críticas, tem duas
+formas diretas de se implementar este programa, uma com seções críticas não-nomeadas:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data simple_prime_bins_unnamed(unsigned long num_bins, unsigned long num_threads){
+
+    auto bin_2 = std::priority_queue&lt;unsigned long&gt;();
+    auto bin_3 = std::priority_queue&lt;unsigned long&gt;();
+
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i &lt; num_bins&lt;&lt;2; i++){
+        if (i%2 == 0){
+            #pragma omp critical
+                bin_2.push(i);
+        }
+        if (i%3 == 0){
+            #pragma omp critical
+                bin_3.push(i);
+        }
+    }
+
+    auto end = utils::mark_time();
+    unsigned long res = bin_2.size() + bin_3.size();
+    if (print_mode==REGULAR) {
+        std::priority_queue&lt;unsigned long&gt; bins[2] = {bin_2, bin_3};
+        unsigned long bin_nums[2] = {2, 3};
+        for (auto i = 0; i &lt; 2; i++){
+                printf("%lu bin contents: ", bin_nums[i]);
+                while (!bins[i].empty()){
+                    printf("%lu ", bins[i].top());
+                    bins[i].pop();
+                }
+                printf("\n\n");
+            }
+    }
+    return {res, utils::calc_time_interval_ms(start, end)};
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Onde, por consequência da exclusividade mútua de acesso de seções com o mesmo identificador mencionada anteriormente, a
+inserção em uma fila está desnecessariamente bloqueando a inserção na outra. Uma primeira otimização seria, então, dar
+nomes diferentes às seções, da seguinte forma:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">    #pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i &lt; num_bins&lt;&lt;2; i++){
+        if (i%2 == 0){
+            #pragma omp critical(bin_2)
+                bin_2.push(i);
+        }
+        if (i%3 == 0){
+            #pragma omp critical(bin_3)
+                bin_3.push(i);
+        }
+    }</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Para poder ver a diferença, a tabela a seguir resume o resultado de testes para um N (note que <code>num_bins</code> está fazendo
+o papel de N nos códigos) de 100000 — grande o suficiente para que se possa distinguir o overhead causado pela
+sincronização — e 100 amostras de execuções dos dois modos.</p>
+</div>
+<table class="tableblock frame-all grid-all stretch">
+<colgroup>
+<col style="width: 33.3333%;">
+<col style="width: 33.3333%;">
+<col style="width: 33.3334%;">
+</colgroup>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">NUM_THREADS</p></td>
+<td class="tableblock halign-left valign-top" colspan="2"><p class="tableblock">10</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MEAN_TIME_MS</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">DESV_PAD_TIME_MS</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">MODE</p></td>
+<td class="tableblock halign-left valign-top" colspan="2"></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SIMPLE_NAMED</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">39.4695</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">3.8235</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">SIMPLE_UNNAMED</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">58.787</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">1.46218</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>Agora, vamos para um programa mais complexo. Se, ao invés de contabilizarmos somente os múltiplos de 2 e de 3,
+fornecessemos ao programa um valor P tal que fosse contabilizado os múltiplos dos P-primeiros primos? Para simplificar a
+chamada, vamos considerar também que o intervalo de busca dos múltiplos é de 1 a \(4P\) (agora faz sentido o
+4N?). Como as seções críticas (e seus identificadores) são definidos em tempo de compilação, não é possível criar uma
+seção para cada fila com P sendo definido na execução. Para isso, precisamos deixar o <code>critical</code> do OpenMP de lado e
+voltar as locks. Fortuitamente, o OpenMP fornece funcionalidades para isso com o tipo opaco <code>omp_lock_t</code> e as funções
+<code>omp_init_lock</code>, <code>omp_set_lock</code>, <code>omp_unset_lock</code> e <code>omp_destroy_lock</code>. O código a seguir demonstra o uso das locks para
+o problema:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-cpp hljs" data-lang="cpp">return_data dynamic_prime_bins(unsigned long num_bins, unsigned long num_threads){
+
+    auto bins = new std::priority_queue&lt;unsigned long&gt;[num_bins];
+    unsigned long* bin_nums = first_n_primes(num_bins, num_threads);
+    omp_lock_t* bin_locks = (omp_lock_t*)(std::malloc(num_bins*sizeof(omp_lock_t)));
+    for (auto i = 0; i &lt; num_bins; i++){
+        omp_init_lock(&amp;bin_locks[i]);
+    }
+
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads) schedule(guided)
+    for (auto i = 2; i &lt; num_bins&lt;&lt;2; i++){
+        for (auto j = 0; (j &lt; num_bins); j++){
+            if (i &lt; bin_nums[j]){break;}
+            if (i%bin_nums[j] == 0){
+                omp_set_lock(&amp;bin_locks[j]);
+                bins[j].push(i);
+                omp_unset_lock(&amp;bin_locks[j]);
+            }
+        }
+    }
+
+    auto end = utils::mark_time();
+
+    unsigned long res = 0;
+    for (auto i = 0; i &lt; num_bins; i++){
+        omp_destroy_lock(&amp;bin_locks[i]);
+        res += bins[i].size();
+        if (print_mode==REGULAR){
+            printf("%lu bin contents: ", bin_nums[i]);
+            while (!bins[i].empty()){
+                printf("%lu ", bins[i].top());
+                bins[i].pop();
+            }
+            printf("\n\n");
+        }
+    }
+
+    free(bin_locks);
+    free((void*) bin_nums);
+    delete[] bins;
+    return {res, utils::calc_time_interval_ms(start, end)};
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>&lt;aqui caberia um parágrafo e um gráfico do tempo de execução para múltiplos threads e tamanhos de problema, mas estou
+ruim de prazos e já estou passando dos requisitos&gt;</p>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_relacionados_9">Relacionados</h3>
+<div class="ulist">
+<ul>
+<li>
+<p>Para não dizer que não teve nenhum (muito do que teve aqui foi de memória e das aulas), a
+<a href="https://www.openmp.org/spec-html/5.0/openmpsu89.html">especificação do critical para OpenMP 5.0</a>. Idealmente você
+segue a spec da versão que seu compilador tem suporte, mas a informação daí já é bem útil.</p>
 </li>
 </ul>
 </div>
 </div>
 <div class="sect2">
-<h3 id="_íntegra_dos_códigos_2">Íntegra dos códigos</h3>
+<h3 id="_íntegra_dos_códigos_8">Íntegra dos códigos</h3>
 <details>
 <summary class="title">main.cpp</summary>
 <div class="content">
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-c++ hljs" data-lang="c++">#include &lt;cstdio&gt;
-#include &lt;cstdlib&gt;
-#include &lt;iostream&gt;
 #include &lt;unordered_map&gt;
 #include &lt;string&gt;
 #include &lt;cerrno&gt;
-#include &lt;concepts&gt;
-#include &lt;type_traits&gt;
 #include "utils.h"
-
-void* _checking_malloc(size_t bytesize, int line){
-    void* res = std::malloc(bytesize);
-    if (res == NULL){printf("Allocation error around ln %d\n", line); exit(1);}
-    return res;
-}
-
-#define checking_malloc(bytesize) _checking_malloc(bytesize, __LINE__)
-
-template &lt;typename T&gt;
-void print_vec(T* vec, size_t length){
-    for (auto i = 0; i &lt; length-1; i++){
-        std::cout &lt;&lt; vec[i] &lt;&lt; ", ";
-    }
-    std::cout &lt;&lt; vec[length-1] &lt;&lt; "\n";
-}
+#include &lt;dirent.h&gt;
+#include &lt;omp.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;cstring&gt;
+#include &lt;iostream&gt;
+#include &lt;type_traits&gt;
+#include &lt;queue&gt;
+#include &lt;set&gt;
 
 enum PRINT_MODE {
     REGULAR,
-    VECTOR,
     CSV
 };
 
-typedef utils::_return_data&lt;float&gt; return_data;
-
-template &lt;typename T&gt;
-utils::_return_data&lt;T&gt; init_vec(T* vec_in_out, size_t vec_size){
-    
-    auto start = utils::mark_time();
-    for (size_t i = 0; i &lt; vec_size; i++){
-        vec_in_out[i] = i+i;
-        }
-    auto end = utils::mark_time();
-    return {static_cast&lt;T&gt;(0), utils::calc_time_interval_ms(start, end)};
-}
-
-template &lt;int N, typename T&gt; requires (N &gt; 0)
-static constexpr void unrolling_sum(T* accumulator_vec, T* vec_in, size_t offset){
-    if constexpr (N &gt; 1) {unrolling_sum&lt;N-1, T&gt;(accumulator_vec, vec_in, offset);}
-    accumulator_vec[N-1] += vec_in[offset + N-1];
-}
-
-template &lt;int N, typename T&gt; requires (N &gt; 0)
-static constexpr void reduce_accs(T* accumulator_vec){
-    if constexpr (N &gt; 1) {
-        accumulator_vec[N-2] += accumulator_vec[N-1];
-        reduce_accs&lt;N-1, T&gt;(accumulator_vec);
-    }
-}
-
-template &lt;typename T, int N&gt; requires std::is_arithmetic_v&lt;T&gt; &amp;&amp; (N&gt;=1)
-utils::_return_data&lt;T&gt; reduce_block(T* vec_in, size_t vec_size){    
-    T accumulators[N];
-    for (size_t i = 0; i&lt;N; i++){
-        accumulators[i] = static_cast&lt;T&gt;(0);
-    }
-    auto start = utils::mark_time();
-    size_t i = 0;
-    for (;i+N-1 &lt; vec_size; i+=N){
-        unrolling_sum&lt;N, T&gt;(accumulators, vec_in, i);
-    }
-    for (;i &lt; vec_size; i++){
-        accumulators[0] += vec_in[i];
-    }
-    reduce_accs&lt;N, T&gt;(accumulators);
-    auto end = utils::mark_time();
-    return {accumulators[0], utils::calc_time_interval_ms(start, end)};
-}
-
-typedef return_data (*target_func_ptr)(float*, size_t);
+PRINT_MODE print_mode = REGULAR; //had to move it here as i wanted to print pretty trees
 
 std::unordered_map&lt;std::string, PRINT_MODE&gt; print_flags = {
     {"-printCSV", CSV},
-    {"-printVec", VECTOR}
 };
 
+typedef utils::_return_data&lt;unsigned long&gt; return_data;
+
+
+typedef return_data (*target_func_ptr)(unsigned long, unsigned long);
+
+return_data simple_prime_bins_unnamed(unsigned long num_bins, unsigned long num_threads){
+    
+    auto bin_2 = std::priority_queue&lt;unsigned long&gt;();
+    auto bin_3 = std::priority_queue&lt;unsigned long&gt;();
+    
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i &lt; num_bins&lt;&lt;2; i++){
+        if (i%2 == 0){
+            #pragma omp critical
+                bin_2.push(i);
+        }
+        if (i%3 == 0){
+            #pragma omp critical
+                bin_3.push(i);
+        }
+    }
+
+    auto end = utils::mark_time();
+    unsigned long res = bin_2.size() + bin_3.size();
+    if (print_mode==REGULAR) {
+        std::priority_queue&lt;unsigned long&gt; bins[2] = {bin_2, bin_3};
+        unsigned long bin_nums[2] = {2, 3};
+        for (auto i = 0; i &lt; 2; i++){   
+                printf("%lu bin contents: ", bin_nums[i]);
+                while (!bins[i].empty()){
+                    printf("%lu ", bins[i].top());
+                    bins[i].pop();
+                }
+                printf("\n\n");
+            }
+    }
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+
+return_data simple_prime_bins_named(unsigned long num_bins, unsigned long num_threads){
+    
+    auto bin_2 = std::priority_queue&lt;unsigned long&gt;();
+    auto bin_3 = std::priority_queue&lt;unsigned long&gt;();
+    
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i &lt; num_bins&lt;&lt;2; i++){
+        if (i%2 == 0){
+            #pragma omp critical(bin_2)
+                bin_2.push(i);
+        }
+        if (i%3 == 0){
+            #pragma omp critical(bin_3)
+                bin_3.push(i);
+        }
+    }
+
+    auto end = utils::mark_time();
+    unsigned long res = bin_2.size() + bin_3.size();
+    if (print_mode==REGULAR) {
+        std::priority_queue&lt;unsigned long&gt; bins[2] = {bin_2, bin_3};
+        unsigned long bin_nums[2] = {2, 3};
+        for (auto i = 0; i &lt; 2; i++){   
+                printf("%lu bin contents: ", bin_nums[i]);
+                while (!bins[i].empty()){
+                    printf("%lu ", bins[i].top());
+                    bins[i].pop();
+                }
+                printf("\n\n");
+            }
+    }
+
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+
+template &lt;typename T&gt;
+unsigned long insert_ordered(T* array, T element, unsigned long arr_size, unsigned long max_size){
+    if (arr_size==0){array[0] = element; return 0;}
+    unsigned long start = 0;
+    unsigned long end = arr_size == 0 ? 0 : arr_size -1; //needed to avoid underflow
+    unsigned long middle = (end+start)/2;
+    while (start &lt; end){
+        if (array[middle] &lt; element){
+            start = middle+1;
+        } else{
+            end = middle;
+        }
+        middle = (end+start)/2;
+    }
+
+    if (array[middle] &lt; element){
+        middle++;
+    }
+    
+    if (middle &lt;= end){
+        std::memmove(array + middle+1 , array+middle, (arr_size-middle-(max_size&gt;arr_size? 0:1) )*sizeof(T));
+        array[middle] = element;
+    } else{
+        if (max_size&gt;arr_size){
+            array[middle] = element;
+        }
+    }
+
+    return middle;
+}
+
+//most of dynamic_prime_bins dev time was on this
+unsigned long* first_n_primes(unsigned long n, unsigned int num_threads){
+    
+    unsigned long* res = static_cast&lt;unsigned long*&gt;(std::malloc(sizeof(unsigned long)*n));
+    unsigned long count = 0;
+    unsigned long index = 2;
+    #pragma omp parallel num_threads(num_threads)
+    {
+        unsigned long* local_finds = static_cast&lt;unsigned long*&gt;(std::malloc(sizeof(unsigned long)*n));
+        while (count &lt; n){
+            unsigned long local_count = 0;
+            unsigned long bound = n-count;
+            
+            #pragma omp for
+            for (unsigned long i = index; i &lt; index*index; i++){
+                bool is_prime = local_count &lt; bound;
+                if (is_prime){
+                    for (auto j = 0; j &lt; count; j++){
+                        if (i%res[j] == 0){
+                            is_prime=false;
+                            break;
+                        }
+                    }    
+                }
+                if (is_prime){
+                    local_finds[local_count] = i;
+                    local_count++;
+                }
+            }
+
+            #pragma omp barrier
+
+            for (auto i = 0; i &lt; local_count; i++){
+                unsigned long add_index;
+                #pragma omp critical
+                {
+                    add_index = insert_ordered(res, local_finds[i], count, n);
+                    if (add_index &lt; n){
+                        count = std::min(count+1, n);
+                    }
+                }
+                if (add_index &gt;= n){break;}
+            }
+            #pragma omp barrier
+            #pragma omp single
+            {
+                index = index*index;
+            }
+        }
+        free(local_finds);
+    }
+    return res;
+}
+
+return_data dynamic_prime_bins(unsigned long num_bins, unsigned long num_threads){
+    
+    auto bins = new std::priority_queue&lt;unsigned long&gt;[num_bins];
+    unsigned long* bin_nums = first_n_primes(num_bins, num_threads);
+    omp_lock_t* bin_locks = (omp_lock_t*)(std::malloc(num_bins*sizeof(omp_lock_t)));
+    for (auto i = 0; i &lt; num_bins; i++){
+        omp_init_lock(&amp;bin_locks[i]);
+    }
+
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads) schedule(guided)
+    for (auto i = 2; i &lt; num_bins&lt;&lt;2; i++){
+        for (auto j = 0; (j &lt; num_bins); j++){
+            if (i &lt; bin_nums[j]){break;}
+            if (i%bin_nums[j] == 0){
+                omp_set_lock(&amp;bin_locks[j]);
+                bins[j].push(i);
+                omp_unset_lock(&amp;bin_locks[j]);
+            }
+        }
+    }
+
+    auto end = utils::mark_time();
+    
+    unsigned long res = 0;
+    for (auto i = 0; i &lt; num_bins; i++){   
+        omp_destroy_lock(&amp;bin_locks[i]);
+        res += bins[i].size();
+        if (print_mode==REGULAR){
+            printf("%lu bin contents: ", bin_nums[i]);
+            while (!bins[i].empty()){
+                printf("%lu ", bins[i].top());
+                bins[i].pop();
+            }
+            printf("\n\n");
+        }
+    }
+
+    free(bin_locks);
+    free((void*) bin_nums);
+    delete[] bins;
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+
 std::unordered_map&lt;std::string, target_func_ptr&gt; modes = {
-    {"SINGLE", reduce_block&lt;float,1&gt;},
-    {"BLOCK2",  reduce_block&lt;float, 2&gt;},
-    {"BLOCK4",  reduce_block&lt;float, 4&gt;},
-    {"BLOCK8",  reduce_block&lt;float, 8&gt;},
-    {"BLOCK16", reduce_block&lt;float, 16&gt;},
+    {"SIMPLE_UNNAMED", simple_prime_bins_unnamed},
+    {"SIMPLE_NAMED", simple_prime_bins_named},
+    {"DYNAMIC", dynamic_prime_bins},
 };
 
 int main(int argc, char* argv[]){
-    PRINT_MODE print_mode = REGULAR;
-    if (argc &lt; 3){
-        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n", argv[0]);
-        printf("&lt;MODE&gt; being either SINGLE or BLOCK&lt;2 | 4 | 8 | 16&gt;\n");
+    if (argc &lt; 4){
+        printf("Insufficient arguments, use: %s &lt;MODE&gt; &lt;NUM_BINS&gt; &lt;NUM_THREADS&gt; [-printCSV]\n", argv[0]);
+        printf("&lt;MODE&gt; being either SIMPLE_UNNAMED, SIMPLE_NAMED, DYNAMIC\n");
         exit(1);
     } else{
-        if (argc &gt; 4) {
-            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n",
-                argv[4], argv[0]);
+        if (argc &gt; 5) {
+            printf("Too many arguments starting at %s. Use: %s &lt;MODE&gt; &lt;DIR_PATH&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
+                argv[5], argv[0]);
             exit(1);
         }
-        if (argc == 4){
-            auto temp_print = print_flags.find(argv[3]);
+        if (argc == 5){
+            auto temp_print = print_flags.find(argv[4]);
             if (temp_print == print_flags.end()){
-                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;VEC_SIZE&gt; [-printCSV | -printVec]\n",
-                    argv[3], argv[0]);
+                printf("Invalid argument: %s. Usage: %s &lt;MODE&gt; &lt;DIR_PATH&gt; &lt;NUM_THREADS&gt; [-printCSV]\n",
+                    argv[4], argv[0]);
                 exit(1);
             }
             print_mode = temp_print-&gt;second;
@@ -882,14 +1052,15 @@ int main(int argc, char* argv[]){
 
     auto mode = modes.find(argv[1]);
     if (mode == modes.end()){
-        printf("Invalid mode: %s. Choose between SINGLE or BLOCK&lt;2 | 4 | 8 | 16&gt;\n", argv[1]);
+        printf("Invalid mode: %s. Choose between SERIAL, TASK_PARALLEL or TASK_PARALLEL_OPTIMIZED\n", argv[1]);
         exit(1);
     }
 
     target_func_ptr func = mode-&gt;second;
 
-    size_t params[1];
-    for (auto i = 0; i &lt; 1; i++){
+    
+    size_t params[2];
+    for (auto i = 0; i &lt; 2; i++){
         params[i] = std::strtoul(argv[2+i], NULL, 10);
         if (params[i] == 0 || errno == ERANGE){
             printf("Invalid parameter: %s.\n", argv[2+i]);
@@ -897,26 +1068,17 @@ int main(int argc, char* argv[]){
         }
     }
 
-    float* vec_in = (float*) checking_malloc(params[0]*sizeof(float));
+    return_data exec_data = mode-&gt;second(params[0], params[1]);
 
-    return_data init_data = init_vec(vec_in, params[0]);
-    return_data exec_data = func(vec_in, params[0]);
-
-    switch (print_mode)
-    {
-    case VECTOR:
-        print_vec(vec_in, params[0]);
-        break;
+    switch (print_mode){
     case CSV:
-        printf("%s,%lu,%f\n", "VEC_INIT", params[0], init_data.time_ms);
-        printf("%s,%lu,%f\n", argv[1], params[0], exec_data.time_ms);
+        printf("%s, %lu, %lu, %lu, %f\n", argv[1], params[0], params[1], exec_data.res, exec_data.time_ms);
         break;
     default:
-        printf("Result value: %f; in %f ms\n", exec_data.res, exec_data.time_ms);
+        printf("Result for n = %lu: %lu; Total elapsed time: %f ms\n", params[0], exec_data.res, exec_data.time_ms);
         break;
     }
 
-    free(vec_in);
     return 0;
 }</code></pre>
 </div>
@@ -930,12 +1092,14 @@ int main(int argc, char* argv[]){
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">EXEC_FILE="./a.out"
 PYTHON_EXEC=python3
-MODES="SINGLE BLOCK2 BLOCK4 BLOCK8 BLOCK16"
-INPUT_SIZE=10
-MAX_SIZE=100000000 #10^8
-NUM_SAMPLES=5
-STEP=5
-GROWTH_FACTOR=0.5
+
+START_THREADS=10
+MAX_THREADS=10
+THREAD_VALUES=`seq $START_THREADS $MAX_THREADS` #ive got lazy to rewrite back the while loop
+MODES="SIMPLE_NAMED SIMPLE_UNNAMED"
+PROBLEM_SIZE=100000
+NUM_SAMPLES=100
+
 OUTPUT_FILE=$1
 STATUS=0
 
@@ -944,29 +1108,28 @@ then
     echo "Pass the path to an output file, use: $0 &lt;path/to/output&gt;"
     exit
 fi
-echo MODE,VEC_SIZE,TIME_MS &gt; $OUTPUT_FILE
 
-while [ "$INPUT_SIZE" -lt "$MAX_SIZE" ]
+echo MODE,NUM_BINS,NUM_THREADS,BINS_TOTAL_SIZE,TIME_MS &gt; $OUTPUT_FILE
+
+
+for MODE in $MODES
 do
-    for MODE in $MODES
+    SAMPLE=1
+    while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
     do
-        SAMPLE=1
-        while [ "$SAMPLE" -le "$NUM_SAMPLES" ]
+        for NUM_THREADS in $THREAD_VALUES
         do
-            echo running "$EXEC_FILE $MODE $INPUT_SIZE -printCSV"
-            $EXEC_FILE $MODE $INPUT_SIZE -printCSV &gt;&gt; $OUTPUT_FILE
+            echo running "$EXEC_FILE $MODE $PROBLEM_SIZE $NUM_THREADS -printCSV &gt;&gt; $OUTPUT_FILE"
+            $EXEC_FILE $MODE $PROBLEM_SIZE $NUM_THREADS -printCSV &gt;&gt; $OUTPUT_FILE
             STATUS=$?
             if [ "$STATUS" -ne 0 ]
             then
-                #intended for when the MAT_SIDE is too big for the program to allocate this much memory
                 echo Some error occurred, stopping early.
                 exit
             fi
-            SAMPLE=$(($SAMPLE+1))
         done
+        SAMPLE=$(($SAMPLE+1))
     done
-    INPUT_SIZE=$(($INPUT_SIZE+$STEP))
-    STEP=$($PYTHON_EXEC -c "import math; print(int(max((10**math.log10($INPUT_SIZE)//10)*$GROWTH_FACTOR, $STEP)))")
 done</code></pre>
 </div>
 </div>
@@ -978,45 +1141,51 @@ done</code></pre>
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-python hljs" data-lang="python">import pandas as pd
-import matplotlib.pyplot as plt
 import sys
 
-if len(sys.argv) &lt; 4: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;")
-if len(sys.argv) &gt; 4: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;img_output_filepath&gt; &lt;csv_output_filepath&gt;")
+if len(sys.argv) &lt; 3: print(f"Too few arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;output_path&gt;"); exit(0)
+if len(sys.argv) &gt; 3: print(f"Too many arguments, use {sys.argv[0]} &lt;input_filepath&gt; &lt;output_path&gt;"); exit(0)
 
 data = pd.read_csv(sys.argv[1])
 
-data = data.groupby(['MODE', 'VEC_SIZE']).mean().reset_index()
+data = data.groupby(['MODE', 'NUM_THREADS']).aggregate(
+    MEAN_TIME_MS=('TIME_MS', 'mean'),
+    DESV_PAD_TIME_MS=('TIME_MS', 'std')
+).unstack('NUM_THREADS')
 
-size = (16,9)
-param_cutoff = 10**9
-fig, ax = plt.subplots(figsize=size)
+data.columns = data.columns.swaplevel(0,1)
+data = data.sort_index(axis=1)#.reset_index(level='')
 
-cutoff = data[data['VEC_SIZE'] &lt; param_cutoff]
+data.to_csv(sys.argv[2], float_format="%.6g")
 
-for label in pd.unique(data['MODE']):
-    filtered = cutoff[cutoff['MODE']==label]
-    x = filtered['VEC_SIZE']
-    y = filtered['TIME_MS']
-    ax.plot(x, y, label=label, marker='o')
-
-ax.set_xlabel('VEC_SIZE')
-ax.set_ylabel('mean time (ms)')
-ax.set_title("5 samples per VEC_SIZE, ran on a AMD Ryzen 5 7600, compiled with -O0")
-fig.suptitle("Time comparison between algorithms")
-
-linear = True
-#linear = False
-if linear:
-    ax.set_xlim(left=cutoff['VEC_SIZE'].min(), right=cutoff['VEC_SIZE'].max())
-    ax.set_ylim(bottom=data['TIME_MS'].min())
-else:
-    ax.set_xscale('log')
-    ax.set_yscale('log')
-ax.legend()
-plt.tight_layout()
-fig.savefig(sys.argv[2])
-data.to_csv(sys.argv[3])</code></pre>
+#can't differentiate indexes to merge, maybe adding a index list of which lines to merge?
+def csv_line_to_asciidoc(_line, sep=",", merge=True):
+    line = _line
+    if _line.endswith("\n"): line = _line[:-1]
+    skip_tuple_token = (None, None)
+    new_line = []
+    ipair_line = list(enumerate(line.split(sep)))
+    for i, word in ipair_line:
+        if i is None:
+            continue
+        rep_count = 0
+        if merge or word == '':
+            for j, next_word in ipair_line[i+1:]:
+                if next_word != word:
+                    if next_word != '':
+                        break
+                rep_count += 1
+                ipair_line[j] = skip_tuple_token
+        if rep_count == 0:
+            new_line.append(f"|{word}\n")
+        else:
+            new_line.append(f"{rep_count+1}+|{word}\n")
+    new_line[-1] = new_line[-1][:-1] + "  \n" 
+    return "".join(new_line)
+        
+merge_indexes = [0]
+for i,line in enumerate(open(f"{sys.argv[2]}").readlines()):
+    print(csv_line_to_asciidoc(line, merge=i in merge_indexes))</code></pre>
 </div>
 </div>
 </div>
@@ -1025,7 +1194,7 @@ data.to_csv(sys.argv[3])</code></pre>
 </div>
 </div>
 <div class="paragraph nav-footer">
-<p>← Previous: <a href="gargalo-de-von-neumann.html">Gargalo de Von Neumann e a Cache</a> | ↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="fontes-de-demanda-por-performance-precisao.html">Fontes de demanda por performance: precisão</a> →</p>
+<p>← Previous: <a href="extra-openmp-cache-coherency-false-sharing-thread-safety.html">Extra: detalhando coerência de cache, falso compartilhamento e thread-safety</a> | ↑ Up: <a href="index.html">Programação Paralela</a> | Next: <a href="paralelismo-threads-openmp-atomic-reduce.html">Paralelismo por Threads com OpenMP: sincronização com atomic e reduction</a> →</p>
 </div>
 </div>
 <div id="footer" style="max-width: 80%;">
