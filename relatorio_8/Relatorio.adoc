@@ -8,7 +8,7 @@ Sem saber desses requisitos, a versão do relatório 6 já implementa a melhor v
 então aqui vou detalhar um pouco mais sobre como isso acontece.
 
 === Thread-safety
-Se você já consultou alguma referência de C/C++ provavelmente já se deparou com o termo que encabeça a sessão. A
+Se você já consultou alguma referência de C/C++ provavelmente já se deparou com o termo que encabeça a seção. A
 thread-safety de uma função se refere à capacidade de execução dessa função de forma concorrente/e ou paralela conforme
 pretendido. Uma função que possa chegar a um estado de erro por múltiplas execuções simultâneas não pode ser
 chamada de thread-safe. Como exemplos disso temos a função `readdir` usada no relatório anterior, a função `rand` da
