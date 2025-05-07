@@ -1,0 +1,257 @@
+== Paralelismo por Threads com OpenMP: sincronização com critical e locks
+:stem: latexmath
+=== Introdução
+O assunto da vez é sincronização, dessa vez, em uma postagem dedicada — porque é bem difícil de se encontrar um problema
+paralelo interessante que não precise dela. Certas operações são fundamentalmente seriais, com condições que não podem
+ser garantidas enquanto houver possibilidade de modificação de parte alguma do objeto ao qual elas se aplicam
+(isso quando o objeto pode ser dividido). É a mesma ideia abordada anteriormente na seção de thread-safety em "Extra: detalhando coerência de cache, falso compartilhamento e thread-safety", mas vale diferenciar duas formas de se alcançar
+a thread safety para poder mostrar a importância da sincronização. Para contexto:
+
+[quote, Extra: detalhando coerência de cache, falso compartilhamento e thread-safety]
+____
+A thread-safety de uma função se refere à capacidade de execução dessa função de forma concorrente/e ou paralela
+conforme pretendido. Uma função que possa chegar a um estado de erro por múltiplas execuções simultâneas não pode ser
+chamada de thread-safe...
+
+(...)
+
+O princípio para uma função não ser thread-safe é simples: manipulação concorrente de um recurso sem as devidas
+precauções para condições de corrida...
+____
+
+A depender da natureza do recurso, temos três opções: atribuir a cada thread seu próprio recurso, como os geradores de
+números pseudoaleatórios de "Paralelismo por Threads com OpenMP: Escopo e seções críticas"; subdividir o recurso em
+partes acessáveis independentemente (que é basicamente a paralelização que sempre se aborda aqui); ou sincronizar o
+acesso ao recurso entre as threads. A segunda opção cai por terra assim que chegamos a um recurso indivisível, enquanto
+que a primeira opção depende da capacidade de se usar múltiplos recursos do mesmo tipo para a operação desejada: se
+quero adicionar um elemento ao fim de uma lista encadeada, criar outra lista e inserir o elemento nela não soluciona o
+problema. Resta então a sincronização como alternativa.
+
+Percebendo agora que não expliquei um conceito interessante, imagine uma carga de trabalho com uma unidade arbitrária de
+trabalho latexmath:[X], representando o trabalho necessário para se concluir a tarefa. Executando essa carga sobre uma
+única máquina capaz de realizar latexmath:[T] unidades de trabalho por segundo, temos um tempo de execução de
+latexmath:[\frac{X}{T}]. Fazendo uma conta de padaria, poderíamos assumir que latexmath:[N] máquinas capazes de realizar
+latexmath:[T] unidades de trabalho executando essa carga em paralelo teriam um tempo de execução de
+latexmath:[\frac{X}{NT}]. Já tivemos gráficos e tabelas de resultados demais para sabermos que isso não é verdade, então
+vamos apontar algumas falhas desse modelo inicial em uma das primeiras ocasiões de listagem que é fora da seção
+Relacionados:
+
+- A distribuição das cargas entre as máquinas não é instantânea, requerendo trabalho adicional para sua realização.
+- As unidades de carga são discretas, então a maior parte das combinações de latexmath:[X] e latexmath:[N] não
+satisfazem a condição latexmath:[\frac{X}{N} \in \mathbb{N}]. Por conta disso, desequilíbrios de carga são possíveis
+mesmo entre cargas trivialmente paralelizáveis e máquinas com a mesma capacidade.
+- Para cargas mais complexas, existirão partes que simplesmente não podem ser paralelizadas, como as que pretendo tratar
+nesta postagem, e relações de dependência entre partes da carga pertencentes a diferentes máquinas. Para cargas que
+não podem ser paralelizadas e são independentes da parte paralela, podemos tratá-las como um termo constante; para
+demais cargas não paralelizáveis e as relações de dependência entre cargas, é necessário comunicação, e essa comunicação
+é um trabalho por si só.
+
+Juntando a considerações como máquinas com diferentes capacidades de realização de trabalho e cargas de tamanho
+variável (cuja menor unidade possível não seja igual a de outras cargas), podemos generalizar (arriscando menos erros
+de modelagem) para uma soma de contribuições de tempo de execução da forma latexmath:[t_{S} + max(t_{P_i}(N) +
+t_{C_i}(N)) + t_{B}(N)], com latexmath:[i \in [1, N\]]; latexmath:[t_{S} \rightarrow] tempo serial; latexmath:[t_{P_i}
+\rightarrow] tempo paralelo da máquina i; latexmath:[t_{C_i} \rightarrow] tempo de comunicação da máquina i; e
+latexmath:[t_{B} \rightarrow] tempo de balanceamento de carga. Em geral, a contribuição de latexmath:[t_{P_i}] tende a
+diminuir com o aumento de N, enquanto que latexmath:[t_{B}] e latexmath:[t_{C_i}] se mantém ou aumentam. Esta é uma
+forma (provavelmente ineficiente) de ver as chamadas fontes de perda de desempenho associadas a programação paralela:
+balanceamento de carga e comunicação. (o desbalanceamento de carga está escondido no max, devo falar dele daqui a três
+postagens)
+
+Como, quando é necessário a sincronização, não temos como saber o progresso das demais threads, a sincronização é feita
+através da comunicação. Para isso, convencionalmente usamos da memória compartilhada para transmissão das mensagens: uma
+posição da memória é utilizada para envio e recebimento de mensagens através da escrita e leitura da posição.
+Imediatamente temos um problema: o acesso e modificação por múltiplas threads em uma mesma posição de memória é uma
+receita para problemas. Para garantir que não haja leitura e escrita simultânea, a solução veio por hardware, através de
+instruções atômicas. Estas instruções são, por definição, ininterruptíveis e indivisíveis, garantindo que cada instrução
+do tipo sobre um determinado recurso seja executado uma de cada vez (alternativamente a isso, você tem a comunicação das
+threads em espaços únicos para cada thread, processados serialmente por uma componente). Destas instruções, a instrução
+atômica para _test-and-set_, que atribui um valor a uma posição na memória e retorna seu valor anterior, foi a base para
+implementação das _locks_ em computadores multiprocessados 'modernos'. Com a contextualização finalmente terminada,
+vamos seguir pro OpenMP.
+
+=== Seções críticas
+
+A seção `critical` já foi mencionada previamente em "Paralelismo por Threads com OpenMP: Escopo e seções críticas", mas
+agora que temos esse mói de texto da introdução, vou descrever um pouco mais o funcionamento de `critical`: seções
+críticas, para além de permitirem apenas um único acesso ao conteúdo da seção por vez, recebem dois parâmetros
+opcionais — um identificador, tal que seções críticas com o mesmo identificador não possam ser acessadas
+simultaneamente, e uma dica para o compilador da natureza da sincronização desejada. Dado esse contexto (em especial da
+parte final da introdução), como você imaginaria que é implementada uma seção crítica? (gostou da pergunta? 'roubei' do
+professor. quebra de parágrafo pra dar suspense)
+
+A resposta é simples: por locks. Para cada identificador de seção crítica (incluindo o padrão, quando não é
+especificado) é criado uma lock em tempo de compilação e cada entrada e saída de uma seção crítica seria implementada
+pela acquisição e soltura da _lock_ respectiva ao identificador da seção. Dessa forma o acesso a cada seção de um
+determinado identificador é mutualmente exclusivo entre os demais acessos a seções do mesmo id.
+
+=== Exercício
+OBS.: Na leitura dos requisitos da tarefa relacionada a postagem, acabei me distraindo contextualizando o problema
+desnecessariamente e, nisso, passei batido no critério "escreva um programa que cria tarefas...". A paralelização está
+sendo feita por `for` paralelo. Torço que, já que o assunto principal é sincronização, isso não afete muito.
+
+Para demonstrar isso, imagine um programa que recebe um valor N, fatore os números de 1 a latexmath:[4N] e organize-os
+da seguinte forma: os números múltiplos de 2 são adicionados a uma pilha A, os números múltiplos de 3 são adicionados a
+uma pilha B, e os demais números são descartados. No final do programa, os elementos de cada fila são impressos em ordem
+decrescente. Pela descrição, a implementação serial é simples (e não é muito diferente de quando fizemos contagem de
+primos). Para programas paralelos, entretanto, não podemos ter múltiplas escritas simultâneas nas filas, fazendo-se
+necessário um mecanismo de sincronização. Aproveitando que já fomos devidamente apresentados a seções críticas, tem duas
+formas diretas de se implementar este programa, uma com seções críticas não-nomeadas:
+
+[source, cpp]
+----
+return_data simple_prime_bins_unnamed(unsigned long num_bins, unsigned long num_threads){
+    
+    auto bin_2 = std::priority_queue<unsigned long>();
+    auto bin_3 = std::priority_queue<unsigned long>();
+    
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i < num_bins<<2; i++){
+        if (i%2 == 0){
+            #pragma omp critical
+                bin_2.push(i);
+        }
+        if (i%3 == 0){
+            #pragma omp critical
+                bin_3.push(i);
+        }
+    }
+
+    auto end = utils::mark_time();
+    unsigned long res = bin_2.size() + bin_3.size();
+    if (print_mode==REGULAR) {
+        std::priority_queue<unsigned long> bins[2] = {bin_2, bin_3};
+        unsigned long bin_nums[2] = {2, 3};
+        for (auto i = 0; i < 2; i++){   
+                printf("%lu bin contents: ", bin_nums[i]);
+                while (!bins[i].empty()){
+                    printf("%lu ", bins[i].top());
+                    bins[i].pop();
+                }
+                printf("\n\n");
+            }
+    }
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+Onde, por consequência da exclusividade mútua de acesso de seções com o mesmo identificador mencionada anteriormente, a
+inserção em uma fila está desnecessariamente bloqueando a inserção na outra. Uma primeira otimização seria, então, dar
+nomes diferentes às seções, da seguinte forma:
+
+[source, cpp]
+----
+    #pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i < num_bins<<2; i++){
+        if (i%2 == 0){
+            #pragma omp critical(bin_2)
+                bin_2.push(i);
+        }
+        if (i%3 == 0){
+            #pragma omp critical(bin_3)
+                bin_3.push(i);
+        }
+    }
+----
+
+Para poder ver a diferença, a tabela a seguir resume o resultado de testes para um N (note que `num_bins` está fazendo
+o papel de N nos códigos) de 100000 — grande o suficiente para que se possa distinguir o overhead causado pela
+sincronização — e 100 amostras de execuções dos dois modos.
+
+[cols="3*"]
+|===
+include::resources/rel_9_ascii_table.text[]
+|===
+
+Agora, vamos para um programa mais complexo. Se, ao invés de contabilizarmos somente os múltiplos de 2 e de 3,
+fornecessemos ao programa um valor P tal que fosse contabilizado os múltiplos dos P-primeiros primos? Para simplificar a
+chamada, vamos considerar também que o intervalo de busca dos múltiplos é de 1 a latexmath:[4P] (agora faz sentido o
+4N?). Como as seções críticas (e seus identificadores) são definidos em tempo de compilação, não é possível criar uma
+seção para cada fila com P sendo definido na execução. Para isso, precisamos deixar o `critical` do OpenMP de lado e
+voltar as locks. Fortuitamente, o OpenMP fornece funcionalidades para isso com o tipo opaco `omp_lock_t` e as funções
+`omp_init_lock`, `omp_set_lock`, `omp_unset_lock` e `omp_destroy_lock`. O código a seguir demonstra o uso das locks para
+o problema:
+
+[source, cpp]
+----
+return_data dynamic_prime_bins(unsigned long num_bins, unsigned long num_threads){
+    
+    auto bins = new std::priority_queue<unsigned long>[num_bins];
+    unsigned long* bin_nums = first_n_primes(num_bins, num_threads);
+    omp_lock_t* bin_locks = (omp_lock_t*)(std::malloc(num_bins*sizeof(omp_lock_t)));
+    for (auto i = 0; i < num_bins; i++){
+        omp_init_lock(&bin_locks[i]);
+    }
+
+    auto start = utils::mark_time();
+    #pragma omp parallel for num_threads(num_threads) schedule(guided)
+    for (auto i = 2; i < num_bins<<2; i++){
+        for (auto j = 0; (j < num_bins); j++){
+            if (i < bin_nums[j]){break;}
+            if (i%bin_nums[j] == 0){
+                omp_set_lock(&bin_locks[j]);
+                bins[j].push(i);
+                omp_unset_lock(&bin_locks[j]);
+            }
+        }
+    }
+
+    auto end = utils::mark_time();
+    
+    unsigned long res = 0;
+    for (auto i = 0; i < num_bins; i++){   
+        omp_destroy_lock(&bin_locks[i]);
+        res += bins[i].size();
+        if (print_mode==REGULAR){
+            printf("%lu bin contents: ", bin_nums[i]);
+            while (!bins[i].empty()){
+                printf("%lu ", bins[i].top());
+                bins[i].pop();
+            }
+            printf("\n\n");
+        }
+    }
+
+    free(bin_locks);
+    free((void*) bin_nums);
+    delete[] bins;
+    return {res, utils::calc_time_interval_ms(start, end)};
+}
+----
+
+<aqui caberia um parágrafo e um gráfico do tempo de execução para múltiplos threads e tamanhos de problema, mas estou
+ruim de prazos e já estou passando dos requisitos>
+
+=== Relacionados
+
+- Para não dizer que não teve nenhum (muito do que teve aqui foi de memória e das aulas), a
+link:https://www.openmp.org/spec-html/5.0/openmpsu89.html[especificação do critical para OpenMP 5.0]. Idealmente você
+segue a spec da versão que seu compilador tem suporte, mas a informação daí já é bem útil.
+
+=== Íntegra dos códigos
+
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
