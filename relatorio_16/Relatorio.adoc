@@ -1,0 +1,88 @@
+== Programação distribuída com MPI, Tarefa 16 — Versão de defesa
+:stem: latexmath
+
+=== Enunciado
+
+Implemente um programa MPI que calcule o produto y=Ax, onde A é uma matriz MxN e x é um vetor de tamanho N. Divida a matriz A por linhas entre os processos com MPI_Scatter, e distribua o vetor x inteiro com MPI_Bcast. Cada processo deve
+calcular os elementos de y correspondentes às suas linhas e enviá-los de volta ao processo 0 com MPI_Gather. Compare os
+tempos com diferentes tamanhos de matriz e número de processos.
+
+=== Pontos principais
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_times" style="margin:auto;height:60vh;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+<script>
+    async function fetch_data(path){
+        const response = await fetch(path)
+        data = await response.json()
+        processData(data)
+    }
+
+    function processData(data){
+        var series = {}
+
+        for (var col_i = 0; col_i < data.columns.length; col_i++ ){
+            var y_data = []
+            for (var i = 0; i < data.index.length; i++){
+                y_data.push(data.data[i][col_i])
+            }
+            series[data.columns[col_i]] = {
+                "x":data.index,
+                "y":y_data,
+                "mode":"lines+markers",
+                "type":"scatter",
+                "name": `${data.columns[col_i]} processes`,
+                "marker": {size: 3}
+            }
+        }
+
+        var traces = Object.values(series)
+
+        document.getElementById("plot_times").innerText = ""
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Message size impact on time",
+                subtitle: {text: '3+ samples per SIDE_SIZE, ran on a AMD Ryzen 5 7600'}},
+                xaxis: {title: {text: "SIDE_SIZE"}},
+                yaxis: {title: {text: "mean time (ms)"}},
+            }
+        )
+    }
+    fetch_data("resources/rel_16_data.json")
+</script>
+++++
+
+- Execução em uma única máquina;
+
+- Uso de Scaterv e Gatherv;
+
+- A comunicação escala linearmente com as dimensões da matriz e o número de processos, então não há tendência a um
+speedup linear independentemente do aumento da quantia de processos e/ou tamanho do problema.
+
+=== Íntegra do código
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====

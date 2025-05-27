@@ -1,0 +1,78 @@
+== Programação em GPU com OpenMP, Tarefa 18 — Versão de defesa
+:stem: latexmath
+
+=== Enunciado
+
+Faça o exercício de transferência de calor (heat.c, slide 102) do tutorial de programação de GPUs com OpenMP. Explore
+as diretivas de movimentação de dados para evitar que esse aspecto domine a execução, evitando a GPU fique muito tempo
+ociosa e otimizando o desempenho.
+
+=== Pontos principais
+
+- Execução na partição `gpu-4-a100` uma única GPU;
+- Como toda função a partir da inicialização dos valores até o cálculo do erro era trivialmente paralelizável (com breves substituições como x = dx*(i+1) ao invés de se acumular o x por soma), paralelizei cada uma dessas funções (nomeadamente, `initial_value`, `zero`, `solve` e `l2norm`).
+- Pela paralelização de `l2norm`, supõe-se que foram introduzidos novos erros de soma em ponto flutuante que alteraram o erro final na 14a casa decimal (pouco menos de 0,005% em relação ao original).
+- Para referência, foram executados no mesmo nó três versões: minha tentativa de otimização, o programa original para controle/baseline, e a solução do tutorial (mensurada depois de eu estar satisfeito com o desempenho da minha tentativa em relação ao baseline).
+- Para uma amostra com grade 1000x1000 e 1000 iterações, o tempo total de execução da solução proposta foi `0.82s`, com a seção de diferenças finitas durando `0.021s`. O baseline foi de `1.81s` totais e `1.79s` nas diferenças finitas, enquanto que a solução do tutorial obteve `0.45s` totais e `0.43s` nas diferenças finitas. Enquanto que o tempo de execução caiu significativamente em relação ao baseline, o tempo de execução total da solução proposta ser o dobro da solução do tutorial é insatisfatório, e o aparente ganho enorme no tempo nas soluções finitas é fortemente influenciado simplesmente pela alocação de memória no offloading ocorrer antes dela.
+- Por recomendação em sala de aula, foram feitos testes com um uma grade maior (8000x8000), mantendo-se as 1000 iterações. Obtendo-se para execução e seção das diferenças finitas para 1.02s e 0.68s para a solução proposta, 364.77s e 363.55s para o baseline, e 5.10s e 3.77s para a solução do tutorial. O resultado significativamente melhor em relação à solução do tutorial é sinal de um forte overhead na solução proposta.
+
+OBS.: Apesar de, aliviadamente, entender que o primeiro resultado estava sendo influenciado pelo overhead da questão, fico um tanto surpreso pelo overhead introduzido pela paralelização de `initial_value`, `zero` e `l2norm` ser tão grande em relação a qualquer percentual de overhead possível na solução do tutorial. Seriam somente ocasionados pela cópia dos parâmetros (exceto arrays, já presentes lá) à GPU, que totalizam 10 escalares entre inteiros e floats nas três funções.
+
+#### O tamanho da íntegra dos logs e do código no PDF ficou absurdamente grande, por favor me deixe acessar https://marcos7765.github.io/ParallelProgramming/programacao-gpu-openmp.html se for perguntar sobre eles
+
+=== Logs de execução
+
+.Execução com GPU, grade 1000x1000 e 1000 iterações
+[%collapsible]
+====
+[source, linenums]
+----
+include::EXEC_COM_GPU.log[]
+----
+====
+
+.Execução com GPU no perfilador da Nvidia, grade 1000x1000 e 1000 iterações
+[%collapsible]
+====
+[source, linenums]
+----
+include::EXEC_GPU_PROFILER.log[]
+----
+====
+
+.Execução com GPU, grade 8000x8000 e 1000 iterações
+[%collapsible]
+====
+[source, linenums]
+----
+include::EXEC_COM_GPU_8000_1000.log[]
+----
+====
+
+=== Íntegra do código
+.main.c
+[%collapsible]
+====
+[source,c, linenums]
+----
+include::main.c[]
+----
+====
+
+.compile_and_run_heat.slurm
+[%collapsible]
+====
+[source,shell, linenums]
+----
+include::compile_and_run_heat.slurm[]
+----
+====
+
+.nvprof.slurm
+[%collapsible]
+====
+[source,shell, linenums]
+----
+include::nvprof.slurm[]
+----
+====

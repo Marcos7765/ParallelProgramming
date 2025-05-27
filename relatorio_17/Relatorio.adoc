@@ -1,0 +1,39 @@
+== Programação distribuída com MPI, Tarefa 17 — Versão de defesa
+:stem: latexmath
+
+=== Enunciado
+
+Reimplemente a tarefa 16, agora distribuindo as colunas entre os processos. Utilize MPI_Type_vector e 
+MPI_Type_create_resized para definir um tipo derivado que represente colunas da matriz. Use MPI_Scatter com esse tipo
+para distribuir blocos de colunas, e MPI_Scatter ou cópia manual para enviar os segmentos correspondentes de x. Cada
+processo deve calcular uma contribuição parcial para todos os elementos de y e usar MPI_Reduce com MPI_SUM para somar os
+vetores parciais no processo 0. Discuta as diferenças de acesso à memória e desempenho em relação à distribuição por
+linhas.
+
+=== Pontos principais
+
+- Execução em uma única máquina;
+
+- Uso de Scaterv e Gatherv;
+
+- A comunicação continua escalando linearmente com as dimensões da matriz e o número de processos, então não há
+tendência a um speedup linear independentemente do aumento da quantia de processos e/ou tamanho do problema.
+
+- Em comparação a versão anterior, a pegada de memória do programa continua a mesma, mas a quebra de localidade espacial
+na comunicação aumenta. Para x e y são feitas as trocas de Bcast para Scatter e Gather para Reduce, onde ambas tendem a
+ser mais custosas conforme se aumenta o número de processos (em memória compartilhada é bem evidente a vantagem de uma
+operação como Gather, mas em casos de memória distribuída e alta latência talvez algoritmos como árvores de redução
+sejam mais interessantes que, sequencialmente, processar as mensagens de cada processo no processo principal).
+
+- Para referência: o tempo de execução para uma matriz A quadrada de lado 49961 foi de 13.41s e 11.85s para 2 e 6
+processos respectivamente, enquanto essas mesmas configurações para divisão por linhas resultavam em 2.97s e 1.86s. Para um lado de 9971 elementos os tempos foram 0.365s e 0.321s comparados a 0.106s e 0.057s.
+
+=== Íntegra do código
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====

@@ -62,3 +62,28 @@ include::relatorio_9/Relatorio.adoc[]
 [[paralelismo-threads-openmp-atomic-reduce]]
 [desc="Sobre instruções atômicas com a diretiva atomic e reduções com a cláusula reduction, e uma geral das sincronizações"]
 include::relatorio_10/Relatorio.adoc[]
+
+:imagesdir: relatorio_14/resources
+[[paralelismo-distribuido-mpi-comunicacao-individual]]
+[desc="Versão de defesa relatório 14"]
+include::relatorio_14/Relatorio.adoc[]
+
+:imagesdir: relatorio_15/resources
+[[paralelismo-distribuido-mpi-comunicacao-bloqueante-instant]]
+[desc="Versão de defesa relatório 15"]
+include::relatorio_15/Relatorio.adoc[]
+
+:imagesdir: relatorio_16/resources
+[[paralelismo-distribuido-comunicacao-grupo]]
+[desc="Versão de defesa relatório 16"]
+include::relatorio_16/Relatorio.adoc[]
+
+:imagesdir: relatorio_17/resources
+[[paralelismo-distribuido-comunicacao-grupo-datatype]]
+[desc="Versão de defesa relatório 17"]
+include::relatorio_17/Relatorio.adoc[]
+
+:imagesdir: relatorio_18/resources
+[[programacao-gpu-openmp]]
+[desc="Versão de defesa relatório 18"]
+include::relatorio_18/Relatorio.adoc[]

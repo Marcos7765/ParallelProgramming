@@ -1,0 +1,162 @@
+== Programação distribuída com MPI, Tarefa 15 — Versão de defesa
+:stem: latexmath
+
+=== Enunciado
+
+Implemente uma simulação da difusão de calor em uma barra 1D, dividida entre dois ou mais processos MPI. Cada processo
+deve simular um trecho da barra com células extras para troca de bordas com vizinhos. Implemente três versões: uma com
+MPI_Send/MPI_Recv, outra com MPI_Isend/MPI_Irecv e MPI_Wait, e uma terceira usando MPI_Test para atualizar os pontos
+internos enquanto aguarda a comunicação. Compare os tempos de execução e discuta os ganhos com sobreposição de
+comunicação e computação.
+
+=== Pontos principais
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_wrapper" style="display:flex; flex-direction:column">
+    <div id="plot_times" style="margin:auto;width:70%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+    <select id="select_plot_data" name="Dados" style="margin:auto;width:40%">
+        <option value="resources/rel_15_500_data.csv" selected>Barra de 500 elementos</option>
+        <option value="resources/rel_15_5000_data.csv">Barra de 5000 elementos</option>
+    </select>
+</div>
+<script>
+    cache = {}
+    async function fetch_data(path){
+        var data = []
+        if (cache[path]){data = cache[path]; console.log("omggg acertei o cache mais preguiçoso que existe")}
+        else{
+            const response = await fetch(path)
+            const text = await response.text()
+            const rows = text.split("\n").map(row => row.split(','))
+            var headers = rows[0]
+            const num_cols = rows[0].length
+            for (var i = 1; i < rows.length; i++){
+                if (rows[i].length != num_cols){continue}
+                var row = {}
+                for (var j = 0; j < num_cols; j++){
+                    row[headers[j]] = rows[i][j]
+                }
+                data.push(row)
+            }
+            cache[path] = data
+        }
+        processData(data, {element_count:path.split('_')[2]})
+    }
+
+    function processData(allRows, extra){
+        
+        var modes = {
+            "BLOCKING":{"x":[],"y":[]},
+            "INSTANT_WAIT":{"x":[],"y":[]},
+            "INSTANT_TEST":{"x":[],"y":[]},
+        }
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            modes[row['MODE']]["x"].push(parseInt(row['PROCESS_COUNT']))
+            modes[row['MODE']]["y"].push(parseFloat(row['MEAN_TIME_MS']))
+        }
+
+        var dash_types = ["longdash", "dot", "dashdot"]
+        var counter = 0
+
+        for (const [key, val] of Object.entries(modes)){
+            modes[key]["mode"] = "lines+markers"
+            modes[key]["type"] = "scatter"
+            modes[key]["name"] = key
+            modes[key]["line"] = {dash:dash_types[counter]}
+            counter = (counter+1)%3
+        }
+
+        document.getElementById("plot_times").innerText = ""
+        var traces = Object.values(modes)
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Communication method impact on time",
+                subtitle: {text: `30 samples per PROCESS_COUNT, ${extra.element_count} elements, 100 iterations, ran on a AMD Ryzen 5 7600`}},
+                xaxis: {title: {text: "PROCESS_COUNT"}},
+                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f"},
+            }
+        )
+    }
+
+    const select = document.getElementById("select_plot_data")
+    fetch_data(select.value)
+    select.addEventListener("change", (event) => {fetch_data(event.target.value)})
+</script>
+++++
+
+- Cada processo faz, no máximo, 4 comunicações, com cada uma com 8 bytes (tamanho do double na memória).
+- Comunicação síncrona: problemas de latência.
+- Comunicação assíncrona: mascaramento mínimo com MPI_Wait (espera logo após comunicações)
+- Comunicação assíncrona: mascaramento "máximo" com MPI_Test (checagem a cada iteração da seção independente da barra)
+- MPI_Wait ganho como menos pior, a estratégia com MPI_Test tinha um overhead muito alto devido a checagem constante de
+disponibilidade.
+- Ideal: enviar as mensagens, operar na seção independente, ciclar testes de comunicação pendentes. Mensagens de tamanho
+maiores poderiam influenciar nisso?
+
+
+==== Desenvolvimento da equação
+[stem]
+++++
+\frac{1}{\alpha}\frac{\partial T_u}{\partial t} = \frac{\partial^2 T}{\partial x^2};\\
+
+\frac{1}{\alpha}\frac{\partial T_u}{\partial t} = \frac{T^{(k+1)}_{u} - T^{(k)}_{u}}{\alpha \Delta t} =
+\frac{T^{(k)}_{u-1} + T^{(k)}_{u+1} - 2T^{(k)}_{u}}{\Delta x^2} = \frac{\partial^2 T_u}{\partial x^2};\\
+
+T^{(k+1)}_{u} = (T^{(k)}_{u-1} + T^{(k)}_{u+1})\frac{\alpha \Delta t}{\Delta x^2} + (1 - 2\frac{\alpha \Delta t}{\Delta x^2})T^{(k)}_{u};\\
+++++
+Como latexmath:[\Delta t \le  \frac{\Delta x^2}{2\alpha}] para ser estável, é usado latexmath:[\Delta t] nesse limite,
+obtendo:
+
+[stem]
+++++
+T^{(k+1)}_{u} = (T^{(k)}_{u-1} + T^{(k)}_{u+1})\frac{1}{2};
+++++
+
+(agora sem rigor físico/matemático porque eu não consigo explicar direito) Considerando que, nas extremidades da barra,
+não há transferência de calor, a metade de latexmath:[T^{(k)}_{u}] que seria absorvida pelo ambiente se mantém na
+componente da borda, tornando-a latexmath:[T^{(k+1)}_{u} = (T^{(k)}_{u} + T^{(k)}_{u+1})\frac{1}{2}] para os u das
+extremidades da barra.
+
+Você pode considerar essa uma simulação numérica "correta" de uma barra de metal unidimensional adiabática com
+difusividade térmica e tamanho livres usando o passo de tempo latexmath:[\Delta t = \frac{\Delta x^2}{2\alpha}].
+
+==== Extra
+Diagramas da partição da barra entre os processos e a sincronização necessária (esquerda); e do cálculo do estado da
+barra no próximo passo de tempo (direita).
+
+image::diagramas_matriz.svg[width=70%,align=center, opts=inline]
+
+=== Relacionados
+
+- Função obtida pela seção "Discretization of the Heat Equation: The Explicit Method" do livro Fundamentals of Heat and
+Mass Transfer de Incropera, Dewitt, Bergman e Lavine.
+
+=== Íntegra do código
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====

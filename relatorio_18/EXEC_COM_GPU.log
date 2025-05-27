@@ -1,0 +1,83 @@
+gpunode2
+gpunode2.npad.internal
+-------------------------------------- COM GPU
+
+ MMS heat equation
+
+--------------------
+Problem input
+
+ Grid size: 1000 x 1000
+ Cell width: 9.990010E-01
+ Grid length: 1000.000000 x 1000.000000
+
+ Alpha: 1.000000E-01
+
+ Steps: 1000
+ Total time: 5.000000E-01
+ Time step: 5.000000E-04
+--------------------
+Stability
+
+ r value: 0.000050
+--------------------
+Results
+
+Error (L2norm): 4.022428E-10
+Solve time (s): 0.018414
+Total time (s): 0.815403
+--------------------
+-------------------------------------- CONTROLE
+
+ MMS heat equation
+
+--------------------
+Problem input
+
+ Grid size: 1000 x 1000
+ Cell width: 9.990010E-01
+ Grid length: 1000.000000 x 1000.000000
+
+ Alpha: 1.000000E-01
+
+ Steps: 1000
+ Total time: 5.000000E-01
+ Time step: 5.000000E-04
+--------------------
+Stability
+
+ r value: 0.000050
+--------------------
+Results
+
+Error (L2norm): 4.022229E-10
+Solve time (s): 1.595870
+Total time (s): 1.613014
+--------------------
+-------------------------------------- CONTROLE SOLUCAO OTIMIZADA
+
+ MMS heat equation
+
+--------------------
+Problem input
+
+ Grid size: 1000 x 1000
+ Cell width: 9.990010E-01
+ Grid length: 1000.000000 x 1000.000000
+
+ Alpha: 1.000000E-01
+
+ Steps: 1000
+ Total time: 5.000000E-01
+ Time step: 5.000000E-04
+--------------------
+Stability
+
+ r value: 0.000050
+--------------------
+Results
+
+Error (L2norm): 4.022229E-10
+Solve time (s): 0.338090
+Total time (s): 0.356106
+--------------------

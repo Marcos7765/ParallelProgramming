@@ -1,0 +1,99 @@
+== Programação distribuída com MPI, Tarefa 14 — Versão de defesa
+:stem: latexmath
+
+=== Enunciado
+
+Implemente um programa MPI com exatamente dois processos. O processo 0 deve enviar uma mensagem ao processo 1, que
+imediatamente responde com a mesma mensagem. Meça o tempo total de execução de múltiplas trocas consecutivas dessa
+mensagem, utilizando MPI_Wtime. Registre os tempos para diferentes tamanhos, desde mensagens pequenas (como 8 bytes) até
+mensagens maiores (como 1 MB ou mais). Analise o graficamente o tempo em função do tamanho da mensagem e identifique os
+regimes onde a latência domina e onde a largura de banda se torna o fator principal.
+
+=== Pontos principais
+
+++++
+<script src="https://cdn.plot.ly/plotly-3.0.1.min.js" charset="utf-8"></script>
+<div id="plot_times" style="margin:auto;width:80%;aspect-ratio: 16 / 9">Se você está vendo isso aqui, o script do plot deu pau</div>
+<script>
+    async function fetch_data (){
+        const response = await fetch("resources/rel_14_data.csv")
+        const text = await response.text()
+        const rows = text.split("\n").map(row => row.split(','))
+        var data = []
+        var headers = rows[0]
+        const num_cols = rows[0].length
+        for (var i = 1; i < rows.length; i++){
+            if (rows[i].length != num_cols){continue}
+            var row = {}
+            for (var j = 0; j < num_cols; j++){
+                row[headers[j]] = rows[i][j]
+            }
+            data.push(row)
+        }
+        processData(data)
+    }
+
+    function processData(allRows){
+        var x = []
+        var y = []
+
+        for (var i=0; i < allRows.length; i++) {
+            row = allRows[i];
+            x.push(parseInt(row['BYTESIZE']))
+            y.push(parseFloat(row['MEAN_TIME_MS']))
+        }
+        var traces = [{
+            "x":x, "y":y, "mode": "lines+markers", "type": "scatter"
+        }]
+
+        document.getElementById("plot_times").innerText = ""
+        Plotly.newPlot("plot_times", traces,
+            {
+                title: {text: "Message size impact on time",
+                subtitle: {text: '30 samples per BYTESIZE, ran on a AMD Ryzen 5 7600'}},
+                xaxis: {title: {text: "BYTESIZE"}, type:"log", autorange:true},
+                yaxis: {title: {text: "mean time (ms)"}, tickformat: ".5f", autorange:true, type:"log"},
+            }
+        )
+    }
+
+    fetch_data()
+</script>
+++++
+
+//pagebreak forçado porque o gráfico inventou de se fundir com a bullet list
+[%always]
+<<<
+
+- Execução em uma única máquina;
+
+- Mensagens de até certo tamanho podem ser bufferizadas (MPI_Send);
+
+- Começo da subida em 4096~16384, de onde cada valor dobrado de Bytesize gera um valor dobrado do tempo médio.
+
+=== Íntegra do código
+.main.cpp
+[%collapsible]
+====
+[source,c++, linenums]
+----
+include::main.cpp[]
+----
+====
+
+.run_tests.sh
+[%collapsible]
+====
+[source, shell, linenums]
+----
+include::run_tests.sh[]
+----
+====
+.process_data.py
+[%collapsible]
+====
+[source, python, linenums]
+----
+include::process_data.py[]
+----
+====
